@@ -1,4 +1,4 @@
-# Pocket Orbit — Game Plan
+# Pocket Orbit: Little Haven — Game Plan
 
 Last synced: Sep 24, 2026 · Owner: Zach
 Living version: [Pocket Orbit — Game Plan](https://claude.ai/code/artifact/c1381a1f-8b41-4b74-b590-de44230e1378)
@@ -6,7 +6,7 @@ Concept art: [`images art direction/`](images%20art%20direction/) and [`images u
 
 ## Pitch & pillars
 
-**Run a little trading post on a small planet you're turning into a haven for refugees from the Galactic Confederation.** It's a cozy low-poly life sim on a planet you can walk all the way around, with a rocket to the rest of the solar system. The game is called *Pocket Orbit*.
+**Run a little trading post on a small planet you're turning into a haven for refugees from the Galactic Confederation.** It's a cozy low-poly life sim on a planet you can walk all the way around, with a rocket to the rest of the solar system. The game is called *Pocket Orbit: Little Haven*, and the currency is **Stardust**.
 
 **Premise.** You slipped out of the Confederation on forged papers and landed on a quiet planet at the edge of the system. A smuggler named Vessa set you up with a market stall and a debt. Over time other refugees drift in: new neighbors, new customers, new trouble with the Confederation auditor.
 
@@ -342,7 +342,7 @@ The interface should feel like a cozy frontier trading post that happens to be i
 6. **U6: Globe map.** A full-screen interactive globe of the small planet, with soft biome colors (white poles, green middle, sandy equator band), little pins for home, shop, and shrines, and a zoom slider on the side.
 7. **U7: Dialogue.** A gameplay scene with a dialogue box along the bottom: a round portrait of a cute moth-like alien villager on the left, a name tag, a rounded speech panel, and two reply buttons on the right.
 8. **U8: Space travel.** A stylized solar system map like a tabletop orrery on a navy starry background, five planets on orbit rings, one selected with a destination card showing its picture and a fuel gauge, and a big launch button.
-9. **U9: Title screen.** The small low-poly planet floating in space with its glowing atmosphere and village lights, the logo "Pocket Orbit" above it in a rounded, friendly, slightly hand-lettered style, and a "Tap to start" button below.
+9. **U9: Title screen.** The small low-poly planet floating in space with its glowing atmosphere and village lights, the logo "Pocket Orbit" above it in a rounded, friendly, slightly hand-lettered style with a smaller "Little Haven" subtitle, and a "Tap to start" button below.
 10. **U10: App icon.** Square app icon with rounded corners: a tiny low-poly planet with a striped market-stall awning on top and a small rocket orbiting it, bright and readable at small size, no text.
 11. **U11: Item icon set.** Twelve item icons in a 4 × 3 grid on a transparent background: a fish, a beetle, a gem, a shell, a fossil, a meteorite, a flower, a wood log, a lantern, a crate, a fishing rod, a nav chip. Soft lighting, slight three-quarter view, same size and angle.
 
@@ -416,7 +416,7 @@ Visits to friends' planets come after launch, but these choices now keep that do
 Paste this into a coding agent to start. It builds the look test first and stops so you can review before moving on to gameplay.
 
 ```
-You are helping build "Pocket Orbit", a cozy low-poly life sim on a small spherical
+You are helping build "Pocket Orbit: Little Haven", a cozy low-poly life sim on a small spherical
 planet where the player runs a trading post. Engine: Godot 4, GDScript (Mobile renderer).
 Targets iOS and Android; PC build for testing only. Aim for 30 fps on a mid-range phone.
 Art: low-poly, flat/soft shading, one shared palette texture for all models,
@@ -474,16 +474,24 @@ RULES
 
 | Topic | Decision |
 | --- | --- |
-| Name | Pocket Orbit |
-| Engine | Godot 4 with GDScript, Mobile renderer |
+| Name | Pocket Orbit: Little Haven |
+| Currency | Stardust |
+| Engine | Godot 4 with GDScript, Mobile renderer (4.7.2) |
 | Platforms | iOS and Android. PC build for testing only |
 | Concept art tool | ChatGPT image generation |
 | Economy risk | Gentle early, more risk with each shop tier, relaxed setting to turn it off |
 | Real-time clock vs. night side | Keep both. Night creatures are always available on the night side, and that's fine |
 | Climate | Planting forests expands them, and players can terraform (e.g. lay sand to grow desert) |
 | Multiplayer | After launch, but the save format, IDs, and commands are built for it now |
+| Tile shape | Stepped hex columns: each tile is flat at one of a few low height levels, with short cliff sides |
+| Planet size | Icosphere subdivided 16 ways: 2,562 tiles (2,550 hexes + 12 pentagons), ~96 tiles around the equator, ~2 s to walk across one |
+| Real clock in testing | Real clock by default, plus a debug control to speed up or scrub time |
+| Phase 0 controls | WASD + mouse camera and a basic on-screen joystick; tap-to-walk arrives with the TileGraph in Phase 1 |
+| Repo layout | Godot project at the repo root; concept art folders carry `.gdignore` so Godot skips them |
+| Git LFS | New game assets (models, textures, audio) go in LFS; the existing concept art stays as normal files |
+| Workflow | One branch and pull request per phase |
 
 ### Still open
 
-- [ ] **Name check.** Search the App Store, Google Play, and trademark listings for "Pocket Orbit" before building a logo or store page.
-- [ ] **Currency name.** Something cozy and spacey, like Stardust, Pips, or Chits.
+- [ ] **Name check.** Search the App Store, Google Play, and trademark listings for "Pocket Orbit: Little Haven" before building a logo or store page.
+- [x] **Currency name.** Stardust.
