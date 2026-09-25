@@ -362,6 +362,16 @@ Five phases. Each one ends with something playable. Timing assumes part-time sol
 
 **Phase 0 matters most.** The atmosphere and curved horizon are the hook. If they don't look great with gray boxes, fix that before building gameplay on top.
 
+### Polish backlog
+
+Phase 0 set the art style: Blender-scripted models matched to the concept art (see `tools/blender/build_assets.py`). Polish lands with the phase that makes each thing matter, so it isn't redone when gameplay changes.
+
+| When | Polish |
+| --- | --- |
+| With Phase 1 | Rigged player character from the turnaround sheets (walk, idle, tool animations). Trees and props fade when they block the camera. Real models for cactus, jungle tree, ice spire and shrines. Ground detail: grass tufts, flowers, stepping-stone paths, fences. Rounder terrace edges so the hex grid stops showing from orbit. |
+| With Phase 2 | Villager species and new buildings (general shop, Archive, landing pad) in the same style. Waterfalls where rivers drop off terraces, shore foam, tide pools. Rain, snow, fireflies, falling leaves. |
+| Before release | A side-by-side pass of every model against its concept (colour, bevels, proportions). Soft outline on characters, bloom tuning. Profiling on a mid-range phone, then tuning detail distances and triangle budgets. Final UI built from the UI mockups. |
+
 ## Tech stack & architecture
 
 Godot 4 with GDScript, Blender for models, glTF files in between, and all game data in data files so new planets reuse the same systems.
