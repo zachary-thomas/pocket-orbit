@@ -21,8 +21,15 @@ const VILLAGE_CLEAR_RINGS := 2
 const RADIUS := {
 	"tree_round": 0.5, "tree_pine": 0.55, "rock": 0.85, "bush": 0.55, "cactus": 0.45,
 	"jungle_tree": 0.4, "ice_spire": 0.65, "shrine": 1.4, "lamp_post": 0.2,
-	"market_stall": 1.45, "cottage": 2.15, "cargo_pod": 2.0,
+	"market_stall": 1.45, "cottage": 2.15, "cargo_pod": 2.0, "tide_pool": 0.0, "fence": 0.0,
+	"general_shop": 2.4, "archive": 2.3, "burrow_house": 2.1, "landing_pad": 0.0,
 }
+## Village plots for buildings you put up later (landing pad, Archive, ...).
+const PLOT_COUNT := 4
+## Chance a stretch of low shore gets a tide pool.
+const TIDE_POOL_CHANCE := 0.1
+## The shore tiles nearest home always get one, so there's one to find.
+const TIDE_POOLS_NEAR_HOME := 2
 const SOURCE := {"tree_round": "tree_round", "tree_pine": "tree_pine", "rock": "rock", "jungle_tree": "jungle_tree", "cactus": "cactus"}
 
 
@@ -43,6 +50,7 @@ static func place(data: PlanetData) -> void:
 			var forest := forest_noise.get_noise_3dv(data.sphere.centers[t]) * 0.5 + 0.5
 			_add_nature(data, t, forest)
 	_add_village(data)
+	_add_tide_pools(data)
 
 
 static func _add(data: PlanetData, id: String, model: String, xf: Transform3D, tile: int, size: float) -> Dictionary:
@@ -108,7 +116,7 @@ static func _add_village(data: PlanetData) -> void:
 	# buildings so customers can walk up to it.
 	var street := land[0] if not land.is_empty() else neighbors[0]
 	var stall := transform_toward(data, home, data.sphere.centers[street], 0.5)
-	_add(data, "stall", "market_stall", stall, home, 1.0)
+	_add(data, "stall", "market_stall", stall, home, 1.0)["dynamic"] = true
 	var lamps: Array[Vector3] = []
 	for side in [-1.0, 1.0]:
 		var lamp := stall.translated_local(Vector3(2.3 * side, 0, 1.6))
@@ -139,6 +147,15 @@ static func _add_village(data: PlanetData) -> void:
 			var garden := "rock" if k == 2 else "bush"
 			_add(data, "garden-%s-%d" % [id, k], garden, at.scaled_local(Vector3.ONE * s), tile, s)
 
+	# Fences behind each house, closing off the back garden.
+	for id in ["home", "cottage-1", "cottage-2"]:
+		var house := _find(data, id)
+		if house.is_empty():
+			continue
+		for side in [-1.0, 1.0]:
+			var fence := (house["xf"] as Transform3D).translated_local(Vector3(side * 1.05, 0, -3.3))
+			_add(data, "fence-%s-%d" % [id, int(side)], "fence", fence, house["tile"], 1.0)
+
 	var home_prop := _find(data, "home")
 	data.village = {
 		"stall": stall,
@@ -149,7 +166,60 @@ static func _add_village(data: PlanetData) -> void:
 		"home_tile": home_building,
 		"home_door": (home_prop["xf"] as Transform3D) * Vector3(0, 0, 2.6) if home_prop else stall.origin,
 		"lamps": lamps,
+		"plots": _plots(data, street),
 	}
+
+
+## Empty building plots on the second ring around home, on flat land and
+## spread out around the village, leaving the street clear. Each is
+## {"id", "tile", "xf"} with the front facing home.
+static func _plots(data: PlanetData, street: int) -> Array:
+	var home := data.home_tile
+	var home_dir := data.sphere.centers[home]
+	var around := data.tiles_within(home, 2)
+	var street_side := Array(data.sphere.neighbors(street))
+	var candidates: Array[int] = []
+	for t: int in around:
+		if around[t] == 2 and not data.is_water(t) and data.level[t] == data.level[home] 				and not data.sphere.is_pentagon(t) and not t in street_side:
+			candidates.append(t)
+	# Order round the village, then take every n-th so they're spread out.
+	var frame := SphereMath.basis_from_up(home_dir)
+	var angle := func(t: int) -> float:
+		var d := data.sphere.centers[t] - home_dir
+		return atan2(d.dot(frame.z), d.dot(frame.x))
+	candidates.sort_custom(func(a: int, b: int) -> bool: return angle.call(a) < angle.call(b))
+	var plots := []
+	var count := mini(PLOT_COUNT, candidates.size())
+	for i in count:
+		var t := candidates[int(i * candidates.size() / float(count))]
+		plots.append({"id": "plot-%d" % i, "tile": t, "xf": transform_toward(data, t, home_dir, 0.0)})
+	return plots
+
+
+## Rock pools on the shallow sea floor just off low shores, a little way out
+## from the beach: under water most of the day, uncovered at low tide.
+static func _add_tide_pools(data: PlanetData) -> void:
+	var candidates: Array[Vector2i] = []
+	for t in data.tile_count():
+		if data.level[t] != 0:
+			continue
+		for n in data.sphere.neighbors(t):
+			if data.level[n] == 1:
+				candidates.append(Vector2i(t, n))
+				break
+	var home_dir := data.sphere.centers[data.home_tile]
+	candidates.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return data.sphere.centers[a.x].distance_squared_to(home_dir) < data.sphere.centers[b.x].distance_squared_to(home_dir))
+	for i in candidates.size():
+		var t := candidates[i].x
+		var rng := tile_rng(data, t, 23)
+		if i >= TIDE_POOLS_NEAR_HOME and rng.randf() > TIDE_POOL_CHANCE:
+			continue
+		var shore := data.sphere.centers[candidates[i].y]
+		var dir := data.sphere.centers[t].lerp(shore, 0.3).normalized()
+		var xf := Transform3D(SphereMath.basis_from_up(dir, rng.randf() * TAU), dir * data.top_radius(t))
+		var prop := _add(data, "pool-%d" % t, "tide_pool", xf, t, 1.0)
+		prop["source"] = "tide_pool"
 
 
 static func _find(data: PlanetData, id: String) -> Dictionary:

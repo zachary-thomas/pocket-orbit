@@ -62,6 +62,9 @@ static func build(data: PlanetData) -> Dictionary:
 		_add_ground_detail(near[chunk].shapes, data, t)
 
 	for prop: Dictionary in data.props:
+		# The shop changes as it's upgraded, so the village draws it (Village).
+		if prop.get("dynamic", false):
+			continue
 		var chunk := chunk_of[prop["tile"]]
 		add_prop(near[chunk], far[chunk], prop["model"], prop["xf"])
 	_add_paths(near, chunk_of, data)

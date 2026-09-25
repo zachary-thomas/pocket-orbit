@@ -43,6 +43,9 @@ var customers: Customers
 var bugs: BugSwarm
 var fishing: Fishing
 var vessa: Npc
+var village: Village
+var dig_spots: DigSpots
+var weather: Weather
 
 
 func _ready() -> void:
@@ -63,6 +66,9 @@ func _ready() -> void:
 	customers = _add(Customers.new(), "Customers")
 	bugs = _add(BugSwarm.new(), "Bugs")
 	fishing = _add(Fishing.new(), "Fishing")
+	village = _add(Village.new(), "Village")
+	dig_spots = _add(DigSpots.new(), "DigSpots")
+	weather = _add(Weather.new(), "Weather")
 	interactions = _add(Interactions.new(), "Interactions")
 
 	hud = DebugHud.new()
@@ -105,15 +111,18 @@ func start(world_seed: int, saved: GameState) -> void:
 	var started := Time.get_ticks_msec()
 	planet.generate(world_seed)
 	clouds.build(planet, world_seed)
-	player.build_visual(planet.surface_material)
+	player.build_visual(planet.object_material)
 	planet.focus = player
 	sky.setup(planet, player)
 	game.start(planet, sky, player, saved)
-	var material := planet.surface_material
+	var material := planet.object_material
 	world_items.setup(game, material)
 	customers.setup(game, material)
 	bugs.setup(game, material)
 	fishing.setup(game, material)
+	village.setup(game, customers, planet.prop_material, material)
+	dig_spots.setup(game, planet.surface_material)
+	weather.setup(game, camera)
 	_spawn_vessa()
 	interactions.game = game
 	interactions.camera = camera
@@ -121,6 +130,8 @@ func start(world_seed: int, saved: GameState) -> void:
 	interactions.bugs = bugs
 	interactions.world_items = world_items
 	interactions.vessa = vessa
+	interactions.village = village
+	interactions.dig_spots = dig_spots
 	interactions.material = material
 	game_hud.setup(game, interactions)
 
@@ -143,7 +154,7 @@ func _spawn_vessa() -> void:
 	vessa = Npc.new()
 	vessa.name = "Vessa"
 	add_child(vessa)
-	vessa.build(Npc.Look.VESSA, planet.surface_material, RandomNumberGenerator.new())
+	vessa.build(Npc.Look.VESSA, planet.object_material, RandomNumberGenerator.new())
 	var at: Transform3D = planet.data.village["vessa"]
 	vessa.spawn(planet, planet.find_tile_dir(at.origin.normalized(), planet.data.home_tile))
 	vessa.global_position = planet.global_position + at.origin

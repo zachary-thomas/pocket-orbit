@@ -20,6 +20,8 @@ var planet: Planet
 var sky: SkySystem
 var player: Player
 var saving_enabled := true
+## What the open menu is about (a plot, a villager), set when it's opened.
+var ui_subject := ""
 var save_path := SaveSystem.PATH
 
 var _dirty := false
@@ -40,6 +42,13 @@ func start(p_planet: Planet, p_sky: SkySystem, p_player: Player, loaded: GameSta
 		state = GameState.new()
 		state.world_seed = planet.data.world_seed
 		state.day = sky.day_index
+		for slot in state.inventory.slots:
+			if not slot.is_empty():
+				state.seen[slot["item"]] = true
+	state.cottages.clear()
+	for prop: Dictionary in planet.data.props:
+		if prop["model"] == "cottage":
+			state.cottages.append(prop["id"])
 	_dirty = false
 
 
@@ -65,6 +74,24 @@ func is_night_at_home() -> bool:
 
 func hours_at(world_position: Vector3) -> float:
 	return sky.local_hours_at(world_position)
+
+
+## The season where `world_position` is (the south is half a year off).
+func season_at(world_position: Vector3) -> String:
+	return Seasons.season_at(state.day, SphereMath.latitude_degrees(planet.up_at(world_position)))
+
+
+func is_shop_open() -> bool:
+	return Economy.is_open(state, home_hours())
+
+
+## Species of the villagers who live here, in arrival order.
+func species_here() -> PackedStringArray:
+	var result := PackedStringArray()
+	for v in state.villagers:
+		if not v["species"] in result:
+			result.append(v["species"])
+	return result
 
 
 func worth_today(item: String) -> int:

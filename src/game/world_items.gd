@@ -7,6 +7,12 @@ extends Node3D
 ## Where each shelf's item sits on the stall counter, in the stall's space
 ## (+Z is the customer side).
 const SHELF_SPOTS := [Vector3(-0.92, 1.03, 0.3), Vector3(-0.32, 1.03, 0.36), Vector3(0.3, 1.03, 0.36), Vector3(0.9, 1.03, 0.32)]
+## The general shop's twelve: six along the counter, six on the shelf
+## across the window above it.
+const SHOP_SPOTS := [
+	Vector3(-1.3, 1.04, 1.62), Vector3(-0.78, 1.04, 1.62), Vector3(-0.26, 1.04, 1.62), Vector3(0.26, 1.04, 1.62), Vector3(0.78, 1.04, 1.62), Vector3(1.3, 1.04, 1.62),
+	Vector3(-1.3, 1.53, 1.4), Vector3(-0.78, 1.53, 1.4), Vector3(-0.26, 1.53, 1.4), Vector3(0.26, 1.53, 1.4), Vector3(0.78, 1.53, 1.4), Vector3(1.3, 1.53, 1.4),
+]
 ## Items on the counter are shown a little bigger than life, so they read.
 const SHELF_SCALE := 1.35
 ## Placed items are shown bigger than on a shelf so they read on the ground.
@@ -35,7 +41,7 @@ func setup(p_game: Game, material: Material) -> void:
 
 
 func _on_changed(what: String) -> void:
-	if what in ["stock_shelf", "unstock_shelf", "set_price", "sell", "place", "pick_up"]:
+	if what in ["stock_shelf", "unstock_shelf", "set_price", "sell", "place", "pick_up", "upgrade_shop"]:
 		refresh()
 
 
@@ -45,21 +51,22 @@ func refresh() -> void:
 	for child in _placed.get_children():
 		child.queue_free()
 	var state := game.state
-	for i in state.shelves.size():
+	var spots: Array = SHOP_SPOTS if state.shop_tier >= 2 else SHELF_SPOTS
+	for i in mini(state.shelves.size(), spots.size()):
 		var shelf: Dictionary = state.shelves[i]
 		if shelf.is_empty():
 			continue
 		var item := MeshInstance3D.new()
 		item.mesh = ItemMeshes.mesh(shelf["item"], _material)
-		item.position = SHELF_SPOTS[i]
-		item.rotation.y = PI * 0.5 + (i - 1.5) * 0.25
+		item.position = spots[i]
+		item.rotation.y = PI * 0.5 + (i % 6 - 2.5) * 0.2
 		item.scale = Vector3.ONE * SHELF_SCALE
 		_shelves.add_child(item)
 		var tag := Label3D.new()
 		tag.text = "%d" % Economy.price(shelf["item"], float(shelf["price"]))
 		if int(shelf["count"]) > 1:
 			tag.text += "  x%d" % int(shelf["count"])
-		tag.position = SHELF_SPOTS[i] + Vector3(0, 0.02, 0.24)
+		tag.position = spots[i] + Vector3(0, 0.02, 0.24 if spots[i].y < 1.3 else 0.14)
 		tag.rotation.x = -PI * 0.3
 		tag.font_size = 40
 		tag.pixel_size = 0.004

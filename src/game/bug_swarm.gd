@@ -102,7 +102,8 @@ func _try_spawn() -> void:
 	var tile := planet.find_tile_dir(dir, player.tile)
 	if planet.data.is_water(tile):
 		return
-	var def := CatchTables.bug(_rng, planet.data.biome[tile], game.hours_at(dir * planet.ground_radius(tile)))
+	var spot := planet.global_position + dir * planet.ground_radius(tile)
+	var def := CatchTables.bug(_rng, planet.data.biome[tile], game.hours_at(spot), game.season_at(spot))
 	if def == null:
 		return
 	var bug := Bug.new()

@@ -31,7 +31,14 @@ var day_of_year := 172
 var day_index := 0
 ## Unit vector from the planet toward the sun.
 var sun_direction := Vector3.UP
+## Unit direction from the planet's centre to the moon (see Tides).
+var moon_direction := Vector3.RIGHT
 var home_longitude := 0.0
+## How far the moon is drawn from the planet's centre, and its size.
+const MOON_DISTANCE := 620.0
+const MOON_RADIUS := 26.0
+var moon: MeshInstance3D
+var _year_day_for := -1
 
 var sun: DirectionalLight3D
 var environment: Environment
@@ -82,6 +89,20 @@ func setup(p_planet: Planet, p_observer: Node3D) -> void:
 	home_longitude = SphereMath.longitude(planet.tile_center(planet.data.home_tile))
 	_sky_material.set_shader_parameter("planet_center", planet.global_position)
 	_sky_material.set_shader_parameter("atmosphere_radius", planet.atmosphere_radius)
+	if moon == null:
+		moon = MeshInstance3D.new()
+		moon.name = "Moon"
+		moon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(moon)
+	var md := MeshData.new()
+	md.tint = Color.WHITE
+	md.add_blob(Transform3D.IDENTITY, Vector3.ONE * MOON_RADIUS, Palette.uv("moon"), 2)
+	md.tint = Color.WHITE
+	# A few darker seas on the near side.
+	for spot: Vector4 in [Vector4(0.3, 0.4, -0.86, 0.35), Vector4(-0.4, -0.2, -0.9, 0.28), Vector4(0.1, -0.5, -0.86, 0.2)]:
+		var at := Vector3(spot.x, spot.y, spot.z).normalized() * MOON_RADIUS * 0.93
+		md.add_blob(Transform3D(SphereMath.basis_from_up(at.normalized()), at), Vector3(spot.w, 0.12, spot.w) * MOON_RADIUS, Palette.uv("moon_dark"))
+	moon.mesh = md.to_mesh(planet.object_material)
 	_update_sun()
 
 
@@ -93,7 +114,12 @@ func _process(delta: float) -> void:
 		var seconds := home_seconds + delta * time_scale
 		day_index += floori(seconds / SECONDS_PER_DAY)
 		home_seconds = fposmod(seconds, SECONDS_PER_DAY)
+	if not use_real_clock and day_index != _year_day_for:
+		# The fast clock runs through the year too.
+		_year_day_for = day_index
+		day_of_year = Seasons.day_of_year(day_index)
 	_update_sun()
+	_update_moon()
 
 
 # --- Controls used by the debug HUD ------------------------------------------
@@ -118,6 +144,32 @@ func set_speed(multiplier: float) -> void:
 func toggle_pause() -> void:
 	use_real_clock = false
 	paused = not paused
+
+
+## The tide at a point: sea height above its average there, in metres.
+func tide_at(world_position: Vector3) -> float:
+	return Tides.height(planet.up_at(world_position), moon_direction)
+
+
+## Water depth over the ground of `tile` right now (negative = uncovered).
+func water_depth(tile: int) -> float:
+	return Tides.depth(planet.ground_radius(tile), planet.data.sea_level_radius, Tides.height(planet.tile_center(tile), moon_direction))
+
+
+func season_at(world_position: Vector3) -> String:
+	return Seasons.season_at(day_index, SphereMath.latitude_degrees(planet.up_at(world_position)))
+
+
+func _update_moon() -> void:
+	moon_direction = Tides.moon_direction(Tides.planet_seconds(day_index, home_seconds), home_longitude)
+	RenderingServer.global_shader_parameter_set("moon_direction", moon_direction)
+	RenderingServer.global_shader_parameter_set("tide_amplitude", Tides.AMPLITUDE)
+	RenderingServer.global_shader_parameter_set("season_phase", Seasons.year_phase(day_index))
+	if moon and planet:
+		# Tilted a little out of the equator so it arcs across the sky.
+		var dir := (moon_direction + Vector3.UP * 0.18).normalized()
+		moon.global_position = planet.global_position + dir * MOON_DISTANCE
+		moon.rotation.y = atan2(dir.x, dir.z)
 
 
 ## Local solar time, in hours, at a point on the planet.

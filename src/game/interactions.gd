@@ -24,6 +24,8 @@ var fishing: Fishing
 var bugs: BugSwarm
 var world_items: WorldItems
 var vessa: Npc
+var village: Village
+var dig_spots: DigSpots
 var material: Material
 ## Set by the HUD while a menu is open.
 var ui_open := false
@@ -121,6 +123,23 @@ func perform(target: Dictionary) -> void:
 			panel_requested.emit("storage")
 		"placed":
 			game.run({"type": "pick_up", "id": target["id"]})
+		"plot":
+			game.ui_subject = target["id"]
+			panel_requested.emit("build")
+		"archive":
+			panel_requested.emit("archive")
+		"parcels":
+			game.run({"type": "open_parcels"})
+		"villager":
+			var villager: Npc = target["node"]
+			villager.face(player.global_position)
+			game.ui_subject = target["id"]
+			panel_requested.emit("villager")
+		"auditor":
+			target["node"].face(player.global_position)
+			panel_requested.emit("audit")
+		"dig":
+			_dig(target)
 		"bug":
 			_swing_net(target["node"])
 		"prop":
@@ -146,6 +165,28 @@ func candidates(around_tile: int) -> Array[Dictionary]:
 	]
 	if vessa:
 		list.append({"kind": "vessa", "label": "Talk", "pos": vessa.global_position, "reach": 2.8, "size": 0.7, "height": 1.8})
+	if village:
+		for plot: Dictionary in village.plots():
+			var building := village.building_on(plot["id"])
+			var xf := village.plot_transform(plot)
+			match building.get("kind", ""):
+				"":
+					list.append({"kind": "plot", "label": "Build", "pos": xf.origin, "reach": 3.2, "id": plot["id"], "size": 2.0, "height": 1.0})
+				"archive":
+					list.append({"kind": "archive", "label": "Archive", "pos": xf * Vector3(0, 0, 2.6), "reach": 2.4, "size": 1.6, "height": 3.0})
+				"landing_pad":
+					if not game.state.parcels.is_empty():
+						list.append({"kind": "parcels", "label": "Open", "pos": xf.origin, "reach": 2.8, "size": 1.0, "height": 1.2})
+		for villager: Village.Villager in village.villager_nodes():
+			if villager.visible:
+				list.append({"kind": "villager", "label": "Talk", "pos": villager.global_position, "reach": 2.6, "node": villager, "id": villager.id, "size": 0.7, "height": 1.6})
+		if village.auditor:
+			list.append({"kind": "auditor", "label": "Talk", "pos": village.auditor.global_position, "reach": 2.8, "node": village.auditor, "size": 0.7, "height": 1.9})
+	if dig_spots:
+		var spots := dig_spots.spots()
+		for id: String in spots:
+			if ground_distance(game.player.global_position, spots[id]) < 30.0:
+				list.append({"kind": "dig", "label": "Dig", "pos": spots[id], "reach": 1.9, "id": id, "size": 0.7, "height": 0.5})
 	var placed := world_items.placed_positions()
 	for id: String in placed:
 		list.append({"kind": "placed", "label": "Pick up", "pos": center + placed[id], "reach": 1.9, "id": id, "size": 0.6, "height": 0.6})
@@ -212,6 +253,11 @@ func water_spot(facing: Vector3) -> Vector3:
 ## "Harvest"), or "" if it's done for today.
 func _prop_action(prop: Dictionary) -> String:
 	var source: String = prop["source"]
+	if source == "tide_pool":
+		# Only uncovered at low tide.
+		if _harvested_today(prop["id"]) >= 1 or game.sky.water_depth(prop["tile"]) > Tides.WADE_DEPTH:
+			return ""
+		return "Search"
 	if source in ["tree_round", "jungle_tree"] and _harvested_today(prop["id"] + ":shake") < 1:
 		return "Shake"
 	if _harvested_today(prop["id"]) >= CatchTables.harvests_per_day(source, false):
@@ -236,7 +282,7 @@ func _gather(target: Dictionary) -> void:
 	var prop: Dictionary = target["prop"]
 	var shake: bool = target["label"] == "Shake"
 	var source: String = prop["source"]
-	player.hold("" if shake else ("pick" if source == "rock" else "axe"))
+	player.hold("" if shake or source == "tide_pool" else ("pick" if source == "rock" else "axe"))
 	player.swing()
 	_busy = 0.45
 	await get_tree().create_timer(0.3).timeout
@@ -245,7 +291,8 @@ func _gather(target: Dictionary) -> void:
 	if not result["ok"]:
 		game.toast.emit(result["message"])
 		return
-	var found := CatchTables.gather(game.rng(), source, game.planet.data.biome[prop["tile"]], shake)
+	var found := CatchTables.tide_pool(game.rng()) if source == "tide_pool" \
+		else CatchTables.gather(game.rng(), source, game.planet.data.biome[prop["tile"]], shake)
 	if found.is_empty():
 		game.toast.emit("Nothing fell out this time." if shake else "Nothing useful this time.")
 		return
@@ -253,6 +300,25 @@ func _gather(target: Dictionary) -> void:
 	if collected["ok"]:
 		var at: Vector3 = target["pos"]
 		WorldItems.pop(get_parent(), found[0], at, game.planet.up_at(at), material)
+
+
+func _dig(target: Dictionary) -> void:
+	var player := game.player
+	player.hold("shovel")
+	player.swing()
+	_busy = 0.6
+	await get_tree().create_timer(0.35).timeout
+	var result := Commands.execute(game.state, {"type": "harvest", "prop": target["id"], "max": 1})
+	if not result["ok"]:
+		game.toast.emit(result["message"])
+		return
+	var found := CatchTables.dig(game.rng())
+	var collected := game.run({"type": "collect", "item": found[0], "count": found[1]})
+	if collected["ok"]:
+		var at: Vector3 = target["pos"]
+		WorldItems.pop(get_parent(), found[0], at, game.planet.up_at(at), material)
+		if ItemDatabase.get_item(found[0]).category == "fossil":
+			player.cheer()
 
 
 func _swing_net(bug: Node3D) -> void:

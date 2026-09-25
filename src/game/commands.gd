@@ -43,6 +43,31 @@ static func execute(state: GameState, cmd: Dictionary) -> Dictionary:
 		"set_flag":
 			state.flags[cmd["flag"]] = cmd.get("value", true)
 			result = {"ok": true, "message": ""}
+		"upgrade_shop":
+			result = _upgrade_shop(state)
+		"build":
+			result = _build(state, cmd["kind"], cmd["plot"])
+		"set_hours":
+			result = _set_hours(state, int(cmd["open"]), int(cmd["close"]))
+		"read_mail":
+			result = _read_mail(state, cmd["id"])
+		"accept_resident":
+			result = _answer_request(state, cmd["id"], true)
+		"decline_resident":
+			result = _answer_request(state, cmd["id"], false)
+		"order":
+			result = _order(state, cmd["item"], int(cmd.get("count", 1)))
+		"open_parcels":
+			result = _open_parcels(state)
+		"donate":
+			result = _donate(state, int(cmd["slot"]))
+		"talk_villager":
+			result = _talk_villager(state, cmd["id"])
+		"audit_answer":
+			state.audit["suspicion"] = clampi(state.audit["suspicion"] + int(cmd["points"]), 0, 100)
+			result = {"ok": true, "message": ""}
+		"finish_audit":
+			result = _finish_audit(state)
 		"set_player_tile":
 			state.player_tile = int(cmd["tile"])
 			return {"ok": true, "message": ""}
@@ -63,6 +88,7 @@ static func _collect(state: GameState, item: String, count: int) -> Dictionary:
 	if state.inventory.room_for(item) < count:
 		return _fail("Your bag is full.")
 	state.inventory.add(item, count)
+	state.seen[item] = true
 	match ItemDatabase.get_item(item).category:
 		"fish":
 			state.stats["fish"] += count
@@ -199,10 +225,205 @@ static func _harvest(state: GameState, prop: String, most: int) -> Dictionary:
 static func _new_day(state: GameState, day: int) -> Dictionary:
 	if day == state.day:
 		return _fail("Same day")
+	var previous := state.day
 	state.day = day
+	VillageRules.new_day(state, previous, day)
 	state.sales_today.clear()
 	# Forget yesterday's harvests so saves don't grow forever.
 	for prop: String in state.harvests.keys():
 		if int(state.harvests[prop]["day"]) != day:
 			state.harvests.erase(prop)
 	return {"ok": true, "message": ""}
+
+
+# --- Sanctuary ------------------------------------------------------------------
+
+## Whether you have everything `costs` asks for ({"stardust": n, item: n}),
+## counting your bag and home storage.
+static func can_afford(state: GameState, costs: Dictionary) -> bool:
+	for key: String in costs:
+		if key == "stardust":
+			if state.stardust < int(costs[key]):
+				return false
+		elif state.inventory.count_of(key) + state.storage.count_of(key) < int(costs[key]):
+			return false
+	return true
+
+
+## Takes `costs`, from the bag first, then storage.
+static func _spend(state: GameState, costs: Dictionary) -> void:
+	for key: String in costs:
+		var amount := int(costs[key])
+		if key == "stardust":
+			state.stardust -= amount
+			continue
+		var from_bag := mini(amount, state.inventory.count_of(key))
+		state.inventory.remove_item(key, from_bag)
+		state.storage.remove_item(key, amount - from_bag)
+
+
+static func costs_text(costs: Dictionary) -> String:
+	var parts := PackedStringArray()
+	for key: String in costs:
+		if key == "stardust":
+			parts.append("%d Stardust" % int(costs[key]))
+		else:
+			parts.append("%d %s" % [int(costs[key]), ItemDatabase.get_item(key).name])
+	return ", ".join(parts)
+
+
+static func _upgrade_shop(state: GameState) -> Dictionary:
+	if state.shop_tier >= 2:
+		return _fail("You already have the general shop.")
+	if state.debt >= GameState.STARTING_DEBT:
+		return _fail("Vessa wants a first payment on your debt before she'll help you expand.")
+	var costs: Dictionary = VillageData.building("general_shop")["costs"]
+	if not can_afford(state, costs):
+		return _fail("The general shop needs %s." % costs_text(costs))
+	_spend(state, costs)
+	state.set_shop_tier(2)
+	return {"ok": true, "message": "Your general shop is open! 12 shelves to fill."}
+
+
+static func _build(state: GameState, kind: String, plot: String) -> Dictionary:
+	var def := VillageData.building(kind)
+	if def.is_empty() or def.get("on", "") != "plot":
+		return _fail("You can't build that here.")
+	for id: String in state.buildings:
+		if state.buildings[id]["plot"] == plot:
+			return _fail("Something's already built there.")
+	if kind != "burrow_house" and state.has_building(kind):
+		return _fail("You already have a %s." % def["name"].to_lower())
+	if not can_afford(state, def["costs"]):
+		return _fail("%s needs %s." % [def["name"], costs_text(def["costs"])])
+	_spend(state, def["costs"])
+	var id := state.new_id(kind)
+	state.buildings[id] = {"kind": kind, "plot": plot}
+	return {"ok": true, "message": "Built %s!" % def["name"].to_lower().trim_prefix("the "), "id": id}
+
+
+static func _set_hours(state: GameState, open: int, close: int) -> Dictionary:
+	if state.shop_tier < 2:
+		return _fail("The stall keeps market hours.")
+	open = clampi(open, 0, 23)
+	close = clampi(close, 1, 24)
+	if close - open < 4:
+		return _fail("Stay open at least 4 hours.")
+	state.open_hours = Vector2i(open, close)
+	return {"ok": true, "message": ""}
+
+
+static func _read_mail(state: GameState, id: String) -> Dictionary:
+	var letter := state.letter(id)
+	if letter.is_empty():
+		return _fail("No such letter")
+	letter["read"] = true
+	return {"ok": true, "message": ""}
+
+
+static func _answer_request(state: GameState, id: String, yes: bool) -> Dictionary:
+	var letter := state.letter(id)
+	if letter.is_empty() or letter["kind"] != "move_in" or letter["data"].get("status", "") != "pending":
+		return _fail("That request has been answered.")
+	if yes:
+		return VillageRules.accept(state, letter)
+	letter["data"]["status"] = "declined"
+	letter["read"] = true
+	return {"ok": true, "message": "You wrote back kindly. Maybe another time."}
+
+
+static func _order(state: GameState, item: String, count: int) -> Dictionary:
+	if not state.has_building("landing_pad"):
+		return _fail("Drones need a landing pad to deliver to.")
+	if not item in VillageRules.catalog(state):
+		return _fail("That isn't in the catalogue.")
+	var cost := VillageRules.catalog_price(item) * count
+	if state.stardust < cost:
+		return _fail("That costs %d Stardust." % cost)
+	state.stardust -= cost
+	state.orders.append({"item": item, "count": count, "day": state.day})
+	return {"ok": true, "message": "Ordered %s. It'll land tomorrow morning." % ItemDatabase.get_item(item).name}
+
+
+static func _open_parcels(state: GameState) -> Dictionary:
+	if state.parcels.is_empty():
+		return _fail("No parcels waiting.")
+	var got := PackedStringArray()
+	for parcel in state.parcels.duplicate():
+		var room := state.inventory.room_for(parcel["item"])
+		var count := mini(room, int(parcel["count"]))
+		if count <= 0:
+			continue
+		state.inventory.add(parcel["item"], count)
+		got.append(ItemDatabase.get_item(parcel["item"]).name)
+		parcel["count"] -= count
+		if parcel["count"] <= 0:
+			state.parcels.erase(parcel)
+	if got.is_empty():
+		return _fail("Your bag is full.")
+	return {"ok": true, "message": "Unpacked %s%s" % [", ".join(got), "" if state.parcels.is_empty() else ". Some didn't fit."]}
+
+
+static func _donate(state: GameState, slot: int) -> Dictionary:
+	if not state.has_building("archive"):
+		return _fail("There's no Archive yet.")
+	if state.inventory.is_empty_slot(slot):
+		return _fail("Nothing there")
+	var item := ItemDatabase.get_item(state.inventory.item_at(slot))
+	if not item.category in VillageRules.ARCHIVE_CATEGORIES:
+		return _fail("The Archive doesn't collect %s." % ItemDatabase.category_name(item.category).to_lower())
+	if state.archive.has(item.id):
+		return _fail("The Archive already has a %s." % item.name)
+	state.inventory.take(slot, 1)
+	state.archive[item.id] = state.day
+	state.reputation = mini(100, state.reputation + 1)
+	return {"ok": true, "message": "Donated %s to the Archive. Thank you!" % item.name}
+
+
+## The first chat each day makes friends a little; every few days they bring
+## you something they like.
+static func _talk_villager(state: GameState, id: String) -> Dictionary:
+	var v := state.villager(id)
+	if v.is_empty():
+		return _fail("They've gone.")
+	var species := VillageData.species(v["species"])
+	var lines: Array = species["lines"]
+	var line: String = lines[(state.day + v["friendship"]) % lines.size()]
+	var result := {"ok": true, "message": "", "line": line}
+	if int(v["talked"]) == state.day:
+		return result
+	v["talked"] = state.day
+	v["friendship"] = int(v["friendship"]) + 1
+	if int(v["friendship"]) % VillageRules.GIFT_EVERY == 0:
+		var gift := _gift_for(state, v)
+		if gift != "" and state.inventory.room_for(gift) > 0:
+			state.inventory.add(gift, 1)
+			state.seen[gift] = true
+			result["gift"] = gift
+			result["message"] = "%s gave you a %s!" % [v["name"], ItemDatabase.get_item(gift).name]
+	return result
+
+
+## Something common a villager likes, chosen by how long you've been friends.
+static func _gift_for(state: GameState, v: Dictionary) -> String:
+	var options: Array[String] = []
+	for item in ItemDatabase.all():
+		if item.rarity <= 2 and item.category != "fossil" and VillageData.liking(v["species"], item.id) > 1.0:
+			options.append(item.id)
+	if options.is_empty():
+		return ""
+	return options[hash([state.world_seed, v["id"], v["friendship"]]) % options.size()]
+
+
+static func _finish_audit(state: GameState) -> Dictionary:
+	if not VillageRules.auditor_here(state):
+		return _fail("There's no inspection today.")
+	var suspicion: int = state.audit["suspicion"]
+	state.audit["done"] = state.day
+	var soon := suspicion >= VillageRules.WATCHLIST
+	VillageRules.schedule_audit(state, state.day, soon)
+	if suspicion < 30:
+		state.reputation = mini(100, state.reputation + 2)
+	# Suspicion fades a little after each inspection that goes by.
+	state.audit["suspicion"] = maxi(0, suspicion - 10)
+	return {"ok": true, "message": "", "verdict": VillageRules.audit_verdict(suspicion)}

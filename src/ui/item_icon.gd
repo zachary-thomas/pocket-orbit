@@ -40,6 +40,10 @@ func _draw() -> void:
 			_material(c, s, item.color, item.id)
 		"fruit":
 			_fruit(c, s, item.color, item.id)
+		"fossil":
+			_fossil(c, s, item.color, item.id)
+		"shore":
+			_shore(c, s, item.color, item.id)
 	if count > 1:
 		var font := get_theme_default_font()
 		var text := str(count)
@@ -132,6 +136,9 @@ func _material(c: Vector2, s: float, color: Color, id: String) -> void:
 				_oval(Vector2(c.x + 16 * s, y), Vector2(5, 7) * s, color.lightened(0.35))
 		"stone":
 			_oval(c + Vector2(0, 4) * s, Vector2(22, 16) * s, color)
+		"clay":
+			_oval(c + Vector2(0, 6) * s, Vector2(22, 13) * s, color)
+			_oval(c + Vector2(-4, -2) * s, Vector2(12, 8) * s, color.lightened(0.12))
 		_:
 			_poly(PackedVector2Array([c + Vector2(-13, -10) * s, c + Vector2(13, -10) * s, c + Vector2(15, 20) * s, c + Vector2(-15, 20) * s]), color)
 			_poly(PackedVector2Array([c + Vector2(-7, -20) * s, c + Vector2(7, -20) * s, c + Vector2(7, -10) * s, c + Vector2(-7, -10) * s]), Palette.COLORS["wood_light"])
@@ -149,3 +156,63 @@ func _fruit(c: Vector2, s: float, color: Color, id: String) -> void:
 		_poly(star, color)
 	else:
 		_oval(c + Vector2(0, 4) * s, Vector2(18, 17) * s, color)
+
+
+
+## Fossils: the find on a slab of sandy rock.
+func _fossil(c: Vector2, s: float, color: Color, id: String) -> void:
+	var slab := PackedVector2Array([c + Vector2(-24, -10) * s, c + Vector2(20, -16) * s, c + Vector2(25, 14) * s, c + Vector2(-20, 20) * s])
+	_poly(slab, Palette.COLORS["sand"])
+	match id:
+		"ammonite":
+			for i in 5:
+				var r := (15.0 - i * 3.0) * s
+				draw_arc(c + Vector2(i * 1.2, 0) * s, r, 0.0, TAU * 0.85, 16, color.darkened(0.1 * i), 3.0 * s)
+		"amber_bug":
+			_oval(c, Vector2(14, 12) * s, color)
+			_oval(c, Vector2(5, 3) * s, Palette.COLORS["trunk"])
+		"raptor_claw":
+			draw_polyline(PackedVector2Array([c + Vector2(-12, 10) * s, c + Vector2(-4, -6) * s, c + Vector2(8, -12) * s, c + Vector2(14, -4) * s]), color, 7.0 * s)
+		"shellback_skull", "skywhale_bone":
+			_oval(c + Vector2(-5, 0) * s, Vector2(12, 9) * s, color)
+			_oval(c + Vector2(10, 3) * s, Vector2(7, 5) * s, color)
+		_:
+			draw_line(c + Vector2(-16, 0) * s, c + Vector2(16, 0) * s, color, 4.0 * s)
+			for i in 5:
+				var x := (-12.0 + i * 6.0) * s
+				draw_line(c + Vector2(x, -9 * s), c + Vector2(x + 3 * s, 9 * s), color, 3.0 * s)
+
+
+func _shore(c: Vector2, s: float, color: Color, id: String) -> void:
+	match id:
+		"starfish":
+			var star := PackedVector2Array()
+			for i in 10:
+				var r := (22.0 if i % 2 == 0 else 9.0) * s
+				var a := -PI / 2 + TAU * i / 10.0
+				star.append(c + Vector2(cos(a), sin(a)) * r)
+			_poly(star, color)
+		"sea_urchin":
+			for i in 12:
+				var a := TAU * i / 12.0
+				draw_line(c, c + Vector2(cos(a), sin(a)) * 22 * s, color.darkened(0.2), 2.5 * s)
+			_oval(c, Vector2(13, 13) * s, color)
+		"conch", "hermit_crab":
+			_poly(PackedVector2Array([c + Vector2(-20, 6) * s, c + Vector2(4, -16) * s, c + Vector2(20, 2) * s, c + Vector2(2, 16) * s]), color)
+			if id == "hermit_crab":
+				_oval(c + Vector2(-16, 12) * s, Vector2(6, 5) * s, Palette.COLORS["scarf"])
+		"sea_glass":
+			for p: Vector2 in [Vector2(-8, 2), Vector2(8, -4), Vector2(4, 10)]:
+				_oval(c + p * s, Vector2(9, 6) * s, Color(color, 0.85))
+		"pearl_oyster":
+			_oval(c + Vector2(0, 4) * s, Vector2(22, 12) * s, color)
+			_oval(c + Vector2(0, -2) * s, Vector2(6, 6) * s, Color.WHITE)
+		_:
+			var fan := PackedVector2Array([c + Vector2(0, 16) * s])
+			for i in 9:
+				var a := PI + PI * i / 8.0
+				fan.append(c + Vector2(cos(a), sin(a) * 0.9) * 22 * s + Vector2(0, 8) * s)
+			_poly(fan, color)
+			for i in 5:
+				var a := PI + PI * (i + 1) / 6.0
+				draw_line(c + Vector2(0, 16) * s, c + Vector2(cos(a), sin(a) * 0.9) * 20 * s + Vector2(0, 8) * s, color.darkened(0.2), 2.0 * s)

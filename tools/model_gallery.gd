@@ -7,8 +7,8 @@ extends SceneTree
 ##
 ## --focus frames one model close up instead of the whole row.
 
-const MODELS := ["tree_round", "tree_pine", "bush", "rock", "cactus", "jungle_tree", "ice_spire", "shrine", "lamp_post", "market_stall", "cottage", "cargo_pod"]
-const SPACING := [0.0, 4.2, 3.6, 2.6, 2.4, 2.8, 3.8, 3.2, 3.4, 2.4, 3.2, 4.4]
+const MODELS := ["tree_round", "tree_pine", "bush", "rock", "cactus", "jungle_tree", "ice_spire", "shrine", "lamp_post", "market_stall", "cottage", "cargo_pod", "general_shop", "landing_pad", "archive", "burrow_house", "tide_pool", "plot_marker", "fence"]
+const SPACING := [0.0, 4.2, 3.6, 2.6, 2.4, 2.8, 3.8, 3.2, 3.4, 2.4, 3.2, 4.4, 5.6, 5.0, 4.8, 4.8, 3.6, 3.8, 3.6]
 
 
 func _initialize() -> void:

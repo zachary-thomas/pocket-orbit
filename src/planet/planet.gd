@@ -30,6 +30,9 @@ var surface_material: ShaderMaterial
 ## The surface material for close-up props: they dissolve (dithered) where
 ## they stand between the camera and `focus`, so trees never hide the player.
 var prop_material: ShaderMaterial
+## For characters, items and anything else that shouldn't follow the
+## seasons (same look, no autumn leaves or snow).
+var object_material: ShaderMaterial
 ## What the camera is looking at, usually the player.
 var focus: Node3D
 var water_material: ShaderMaterial
@@ -47,6 +50,8 @@ func _init() -> void:
 	surface_material = ShaderMaterial.new()
 	surface_material.shader = SURFACE_SHADER
 	surface_material.set_shader_parameter("palette", palette)
+	object_material = surface_material.duplicate()
+	surface_material.set_shader_parameter("seasonal", true)
 	prop_material = surface_material.duplicate()
 	prop_material.set_shader_parameter("fade_occluders", true)
 	water_material = ShaderMaterial.new()
@@ -87,14 +92,14 @@ func generate(world_seed: int) -> void:
 		_add_lamp_light(lamp_position)
 	_add_water()
 	_add_atmosphere()
-	for material: ShaderMaterial in [surface_material, prop_material, water_material]:
+	for material: ShaderMaterial in [surface_material, prop_material, object_material, water_material]:
 		material.set_shader_parameter("planet_center", global_position)
 	generated.emit()
 
 
 ## Called by the cloud layer once it knows where its clouds are.
 func set_cloud_shadows(shadow_map: Texture2D, cloud_radius: float) -> void:
-	for material: ShaderMaterial in [surface_material, prop_material, water_material]:
+	for material: ShaderMaterial in [surface_material, prop_material, object_material, water_material]:
 		material.set_shader_parameter("cloud_shadow_map", shadow_map)
 		material.set_shader_parameter("cloud_radius", cloud_radius)
 

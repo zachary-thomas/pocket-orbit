@@ -1,10 +1,13 @@
 class_name ShopPanel
 extends GamePanel
-## The market stall: four shelves, each with a price slider from bargain to
-## premium, and the demand board with today's hints. "Stock" swaps the
-## demand board for your backpack so you can pick what goes on the shelf.
+## The market stall (four shelves) or the general shop (twelve): each shelf
+## has a price slider from bargain to premium. Beside them, the demand board
+## with today's hints, and the upgrade to the general shop or its opening
+## hours. "Stock" swaps the board for your backpack so you can pick what goes
+## on the shelf.
 
 var _rows: Array[Dictionary] = []
+var _shelves: VBoxContainer
 var _side: VBoxContainer
 var _stocking := -1
 var _reputation: Label
@@ -15,13 +18,19 @@ func _init(p_game: Game) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 22)
 	body.add_child(row)
-	var shelves := VBoxContainer.new()
-	shelves.add_theme_constant_override("separation", 10)
-	row.add_child(shelves)
-	for i in GameState.SHELF_COUNT:
-		_rows.append(_make_row(shelves, i))
+	var left := VBoxContainer.new()
+	left.add_theme_constant_override("separation", 10)
+	row.add_child(left)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(700, 380)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	left.add_child(scroll)
+	_shelves = VBoxContainer.new()
+	_shelves.add_theme_constant_override("separation", 10)
+	_shelves.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(_shelves)
 	_reputation = UiTheme.label("", 17, UiTheme.TEXT_SOFT)
-	shelves.add_child(_reputation)
+	left.add_child(_reputation)
 	_side = VBoxContainer.new()
 	_side.custom_minimum_size = Vector2(390, 0)
 	_side.add_theme_constant_override("separation", 10)
@@ -82,6 +91,13 @@ func _make_row(parent: Control, shelf: int) -> Dictionary:
 
 func refresh() -> void:
 	var state := game.state
+	set_title("Your General Shop" if state.shop_tier >= 2 else "Your Stall")
+	if _rows.size() != state.shelves.size():
+		for child in _shelves.get_children():
+			child.queue_free()
+		_rows.clear()
+		for i in state.shelves.size():
+			_rows.append(_make_row(_shelves, i))
 	for i in _rows.size():
 		var row := _rows[i]
 		var shelf: Dictionary = state.shelves[i]
@@ -123,6 +139,7 @@ func refresh() -> void:
 				refresh()))
 	else:
 		_side.add_child(_demand_board())
+		_side.add_child(_shop_box())
 
 
 func _on_shelf_button(shelf: int) -> void:
@@ -147,6 +164,34 @@ func _stock_from(slot: int) -> void:
 		refresh()
 
 
+## Below the board: the upgrade to a general shop, or its opening hours.
+func _shop_box() -> Control:
+	var state := game.state
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 6)
+	if state.shop_tier < 2:
+		var def := VillageData.building("general_shop")
+		var line := UiTheme.label("%s: %s" % [def["name"], def["blurb"]], 16, UiTheme.TEXT_SOFT)
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.custom_minimum_size = Vector2(380, 0)
+		v.add_child(line)
+		var costs: Dictionary = def["costs"]
+		var upgrade := UiTheme.button("Upgrade (%s)" % Commands.costs_text(costs), func() -> void: game.run({"type": "upgrade_shop"}))
+		upgrade.disabled = not Commands.can_afford(state, costs)
+		v.add_child(upgrade)
+		return v
+	var hours := Economy.opening_hours(state)
+	var open_now := game.is_shop_open()
+	v.add_child(UiTheme.label("Open %02d:00 to %02d:00  ·  %s" % [hours.x, hours.y, "open now" if open_now else "closed now"], 18, UiTheme.GOOD if open_now else UiTheme.TEXT_SOFT))
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	v.add_child(h)
+	for change: Array in [["Open earlier", -1, 0], ["later", 1, 0], ["Close earlier", 0, -1], ["later", 0, 1]]:
+		h.add_child(UiTheme.quiet_button(change[0], func() -> void:
+			game.run({"type": "set_hours", "open": hours.x + change[1], "close": hours.y + change[2]}), Vector2(0, 44)))
+	return v
+
+
 func _demand_board() -> Control:
 	var board := PanelContainer.new()
 	var style := UiTheme.box(UiTheme.NAVY, 20, UiTheme.WOOD, 6, 0)
@@ -156,7 +201,7 @@ func _demand_board() -> Control:
 	v.add_theme_constant_override("separation", 12)
 	board.add_child(v)
 	v.add_child(UiTheme.label("Today's demand", 24, UiTheme.AMBER_LIGHT))
-	for hint in Economy.hints(game.state.world_seed, game.state.day):
+	for hint in Economy.hints(game.state.world_seed, game.state.day, game.species_here()):
 		var line := UiTheme.label("·  " + hint, 18, UiTheme.CREAM)
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		line.custom_minimum_size = Vector2(340, 0)

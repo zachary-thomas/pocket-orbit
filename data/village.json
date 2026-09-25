@@ -1,0 +1,120 @@
+{
+  "_about": "The sanctuary: refugee species, what they need before they'll move in, what they like to buy, and what they say; the buildings you can put on village plots and what they cost; and the Confederation auditor's questions. requires.reputation is the minimum reputation; requires.buildings must all be built. likes/dislikes: item categories or tags; liked things are worth more to them, disliked less. costs: stardust plus items by id.",
+  "species": [
+    {
+      "id": "mossback",
+      "name": "Mossback",
+      "plural": "Mossbacks",
+      "blurb": "Slow, gentle turtle-folk whose home world drowned. They carry little gardens on their shells.",
+      "requires": {"reputation": 20, "buildings": []},
+      "likes": ["fish", "shore", "cold", "big"],
+      "dislikes": ["spiky"],
+      "colors": ["7fae6a", "8fb37a", "6f9a78"],
+      "names": ["Pebble", "Tully", "Brine", "Old Moss"],
+      "letter": "Dear shopkeeper,\n\nWord travels slowly among my people, but it travels. They say there is a small green world at the edge of the system where nobody asks for papers.\n\nI am old and I walk slowly, but I can tend a garden and I don't eat much. If you have a roof to spare, I would like very much to come.\n\nWith hope,\n{name} the Mossback",
+      "lines": [
+        "Slow and steady fills the basket.",
+        "The sea here tastes like the one I lost. In a good way.",
+        "I planted a little moss on my roof. Don't tell anyone.",
+        "Have you tried standing still? The planet hums.",
+        "A fish a day keeps the worry away. Mostly."
+      ]
+    },
+    {
+      "id": "glim",
+      "name": "Glim",
+      "plural": "Glims",
+      "blurb": "Soft, moth-like night folk who navigate by starlight. They left when the Confederation dimmed their skies.",
+      "requires": {"reputation": 35, "buildings": ["landing_pad"]},
+      "likes": ["bug", "glowing", "shiny"],
+      "dislikes": ["big"],
+      "colors": ["d8c8f0", "f0d8e8", "c8e0f0"],
+      "names": ["Lumi", "Fennet", "Wisp", "Sola"],
+      "letter": "Hello, hello!\n\nI saw the lights of your landing pad from very, very far away. They're the prettiest lights in the whole dark.\n\nI'm small and I mostly come out at night. Could I live somewhere near your lamps? I promise to be quiet (mostly).\n\nFlutteringly yours,\n{name}",
+      "lines": [
+        "Your lamps are my favourite thing on this whole planet.",
+        "Did you see the moon last night? It winked at me.",
+        "I found a glowbug and we're best friends now.",
+        "The Confederation turned off our stars. Yours are still on.",
+        "Shiny things are just little stars you can hold."
+      ]
+    },
+    {
+      "id": "burrl",
+      "name": "Burrl",
+      "plural": "Burrls",
+      "blurb": "Round, furry diggers who love old things. Their archive-world was 'reorganised' by the Confederation.",
+      "requires": {"reputation": 50, "buildings": ["archive"]},
+      "likes": ["fossil", "mineral", "fruit", "sweet"],
+      "dislikes": ["cold"],
+      "colors": ["c98a5a", "b8764a", "d9a070"],
+      "names": ["Dumpling", "Burrow", "Nib", "Hazel"],
+      "letter": "To whom it may concern (you),\n\nWe hear you have built an Archive. A real one, where old things are kept and not 'corrected'.\n\nI dig. I sort. I remember. I would dig you the best burrow-house on your planet, if you would let me live in it.\n\nRespectfully and a bit muddy,\n{name} of the Burrls",
+      "lines": [
+        "Every rock has a story. Most of them are boring. Some aren't!",
+        "I dug a tunnel to the Archive. Just a little one.",
+        "Sweet things are good for digging arms.",
+        "The Confederation burned our records. We remembered them anyway.",
+        "Brrr. Too cold. Where's a nice warm hole?"
+      ]
+    }
+  ],
+  "buildings": [
+    {
+      "id": "general_shop",
+      "name": "General shop",
+      "blurb": "Turns the stall into a proper shop: 12 shelves, and you choose the opening hours.",
+      "costs": {"stardust": 1500, "wood": 12, "stone": 8},
+      "on": "stall"
+    },
+    {
+      "id": "landing_pad",
+      "name": "Landing pad",
+      "blurb": "Delivery drones land here with mail-order parcels. Its lights can be seen from space.",
+      "costs": {"stardust": 1200, "stone": 10, "copper_ore": 2},
+      "on": "plot"
+    },
+    {
+      "id": "archive",
+      "name": "The Archive",
+      "blurb": "A little museum. Donate one of each fish, bug, mineral, fossil and shore find to keep them safe.",
+      "costs": {"stardust": 2500, "wood": 15, "stone": 15},
+      "on": "plot"
+    },
+    {
+      "id": "burrow_house",
+      "name": "Burrow house",
+      "blurb": "A snug round house, half dug into the ground. Room for one new neighbour.",
+      "costs": {"stardust": 2000, "wood": 10, "clay": 6},
+      "on": "plot"
+    }
+  ],
+  "audit": {
+    "questions": [
+      {
+        "q": "Standard procedure. Where were you before this planet?",
+        "answers": [["Right here, officer. Born and raised.", 12], ["Shipping. Here and there.", 4], ["Is that a new hat? It's very official.", 8]]
+      },
+      {
+        "q": "Your papers list you as a 'licensed botanical exporter'. What does that involve?",
+        "answers": [["Exporting... botanicals. Licensedly.", 10], ["Mostly apples. Some wood. It's thrilling work.", 0], ["Would you like an apple?", 5]]
+      },
+      {
+        "q": "Our records show more residents here than permits. Explain.",
+        "answers": [["They're visiting cousins.", 6], ["Records are so hard to keep, aren't they?", 10], ["Everyone here pays their way. Ask them.", 2]]
+      },
+      {
+        "q": "What is the origin of the goods on your shelves?",
+        "answers": [["Everything's from this planet. Caught it myself.", 0], ["Various sources. All very legal.", 12], ["Nature, mostly.", 5]]
+      },
+      {
+        "q": "Who is the fox person by the stall?",
+        "answers": [["My business partner. Totally legitimate.", 6], ["What fox?", 14], ["A friend. She helped me get started.", 3]]
+      },
+      {
+        "q": "Have you received any unregistered shipments?",
+        "answers": [["Only mail-order. Here's the catalogue.", 2], ["Define 'unregistered'.", 12], ["No, officer.", 6]]
+      }
+    ]
+  }
+}

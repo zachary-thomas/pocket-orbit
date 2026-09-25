@@ -31,18 +31,18 @@ static func _pick(rng: RandomNumberGenerator, candidates: Array[ItemDatabase.Ite
 	return candidates[-1]
 
 
-static func fish(rng: RandomNumberGenerator, water: String, hour: float) -> ItemDatabase.ItemDef:
+static func fish(rng: RandomNumberGenerator, water: String, hour: float, season: String = "") -> ItemDatabase.ItemDef:
 	var candidates: Array[ItemDatabase.ItemDef] = []
 	for item in ItemDatabase.in_category("fish"):
-		if water in item.waters and item.available_at(hour):
+		if water in item.waters and item.available_at(hour) and item.in_season(season):
 			candidates.append(item)
 	return _pick(rng, candidates)
 
 
-static func bug(rng: RandomNumberGenerator, biome: int, hour: float) -> ItemDatabase.ItemDef:
+static func bug(rng: RandomNumberGenerator, biome: int, hour: float, season: String = "") -> ItemDatabase.ItemDef:
 	var candidates: Array[ItemDatabase.ItemDef] = []
 	for item in ItemDatabase.in_category("bug"):
-		if item.found_in(biome) and item.available_at(hour):
+		if item.found_in(biome) and item.available_at(hour) and item.in_season(season):
 			candidates.append(item)
 	return _pick(rng, candidates)
 
@@ -78,8 +78,26 @@ static func gather(rng: RandomNumberGenerator, source: String, biome: int, shake
 	return []
 
 
+## What digging at a dig spot turns up: mostly fossils, some clay, and now
+## and then a shard of starfall.
+static func dig(rng: RandomNumberGenerator) -> Array:
+	var roll := rng.randf()
+	if roll < 0.25:
+		return ["clay", rng.randi_range(2, 3)]
+	if roll < 0.29:
+		return ["starfall_shard", 1]
+	var fossil := _pick(rng, ItemDatabase.in_category("fossil"))
+	return [fossil.id, 1] if fossil else ["clay", 1]
+
+
+## What searching a tide pool at low tide finds.
+static func tide_pool(rng: RandomNumberGenerator) -> Array:
+	var item := _pick(rng, ItemDatabase.in_category("shore"))
+	return [item.id, 1] if item else []
+
+
 ## How many times a day each kind of prop can be harvested.
 static func harvests_per_day(source: String, shake: bool) -> int:
-	if shake:
+	if shake or source == "tide_pool":
 		return 1
 	return 4 if source == "rock" else 3

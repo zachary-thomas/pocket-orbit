@@ -527,6 +527,190 @@ def shrine(b, lod):
             b.leaf(Matrix.Translation(p * 1.15 + Vector((0, 0, -0.2))) @ rot(x=60, z=72 * i), 0.2, "leaf")
 
 
+def general_shop(b, lod):
+    """The general shop that replaces the stall: a timber-framed shop with a
+    wide serving window under a striped awning, a sign board on the roof, and
+    crates and a barrel out front. About 4.6 m wide."""
+    bevel = 0.04 if lod == 0 else 0.0
+    segs = 12 if lod == 0 else 6
+    # Stone footing and walls.
+    b.box(at(0, 0.3, 0.15), (4.6, 3.4, 0.3), "stone_light", bevel)
+    b.box(at(0, 0.3, 1.55), (4.3, 3.1, 2.5), "wall_cream", bevel)
+    # Timber frame: corner posts and a beam along the front.
+    for x in (-2.12, 2.12):
+        for y in (-1.22, 1.82):
+            b.box(at(x, y, 1.55), (0.2, 0.2, 2.5), "wood_dark", bevel)
+    b.box(at(0, -1.22, 2.75), (4.44, 0.22, 0.2), "wood_dark", bevel)
+    # Gabled roof, ridge along X, with overhangs.
+    for side in (-1, 1):
+        b.box(at(0, 0.3 + side * 1.05, 3.5) @ rot(x=-side * 34), (4.9, 2.6, 0.16), "roof_teal", bevel)
+    b.box(at(0, 0.3, 4.22), (4.95, 0.3, 0.2), "wood_dark", bevel)
+    # Gable ends: triangles filling the space under the roof.
+    for x in (-2.12, 2.12):
+        b.box(at(x, 0.3, 2.8) @ scale(1, 1, 0.9) @ rot(x=45), (0.2, 2.19, 2.19), "wall_cream")
+    # Serving window with a counter.
+    b.box(at(0, -1.26, 1.6), (2.8, 0.1, 1.1), "window_glow")
+    b.box(at(0, -1.5, 0.98), (3.1, 0.55, 0.12), "wood_light", bevel)
+    b.box(at(0, -1.38, 0.55), (3.0, 0.32, 0.8), "wood", bevel)
+    if lod == 0:
+        for x in (-0.7, 0.7):
+            b.box(at(x, -1.3, 1.6), (0.08, 0.08, 1.1), "wood_dark")
+        b.box(at(0, -1.3, 1.6), (2.8, 0.08, 0.08), "wood_dark")
+    # Striped awning over the window.
+    stripes = 7
+    width = 3.4 / stripes
+    for i in range(stripes):
+        x = -1.7 + width * (i + 0.5)
+        sw = "awning_red" if i % 2 == 0 else "awning_white"
+        b.box(at(x, -1.75, 2.45) @ rot(x=22), (width + 0.005, 1.1, 0.06), sw)
+        if lod == 0:
+            b.half_disc(at(x, -2.26, 2.26), width / 2, 0.05, 6, sw)
+    # Door on the right side, with a lamp.
+    b.box(at(2.18, 0.9, 1.05), (0.12, 1.0, 1.8), "wood", bevel)
+    b.box(at(2.3, 0.2, 2.2), (0.2, 0.2, 0.26), "lamp_glow", 0.02 if lod == 0 else 0.0)
+    # Sign board on the front of the roof, with a gold star.
+    b.box(at(0, -0.6, 4.05) @ rot(x=-20), (2.2, 0.12, 0.7), "wood", bevel)
+    b.cone(at(0, -0.69, 4.05) @ rot(x=70), 0.24, 0.24, 0.06, 5, "gold")
+    # Chimney.
+    b.box(at(-1.4, 1.3, 4.0), (0.5, 0.5, 1.2), "stone", bevel)
+    if lod == 0:
+        # A display shelf across the window (the counter and this shelf hold
+        # the shop's 12 shelves of goods), with brackets.
+        b.box(at(0, -1.4, 1.5), (2.8, 0.22, 0.06), "wood_light", 0.01)
+        for x in (-1.2, 0.0, 1.2):
+            b.box(at(x, -1.33, 1.42), (0.06, 0.08, 0.14), "wood_dark")
+        # Crates and a barrel out front.
+        for k, (cx, cy) in enumerate(((-2.1, -1.9), (-1.6, -2.3))):
+            b.box(at(cx, cy, 0.28) @ rot(z=12 * k), (0.56, 0.56, 0.56), "wood_light", 0.03)
+        b.cone(at(2.0, -1.9, 0), 0.32, 0.34, 0.8, segs, "wood")
+        for z in (0.2, 0.55):
+            b.cone(at(2.0, -1.9, z), 0.35, 0.35, 0.06, segs, "wood_dark")
+        b.cone(at(-2.4, 1.7, 0), 0.2, 0.24, 0.35, 8, "terracotta")
+        b.sphere(at(-2.4, 1.7, 0.5), 0.3, "leaf", 1, jitter=0.1, seed=50)
+        b.flower(at(-2.4, 1.55, 0.72) @ rot(x=-40), 0.1, "flower")
+
+
+def landing_pad(b, lod):
+    """A round drone landing pad: a metal disc on a stone rim with a yellow
+    H, a ring of chevrons, corner lights and a beacon mast at the back."""
+    segs = 20 if lod == 0 else 10
+    b.cone(at(0, 0, 0), 2.1, 2.0, 0.14, segs, "stone_light")
+    b.cone(at(0, 0, 0.14), 1.75, 1.72, 0.06, segs, "pad_metal")
+    b.box(at(-0.45, 0, 0.21), (0.16, 1.1, 0.02), "pad_stripe")
+    b.box(at(0.45, 0, 0.21), (0.16, 1.1, 0.02), "pad_stripe")
+    b.box(at(0, 0, 0.21), (0.9, 0.16, 0.02), "pad_stripe")
+    if lod == 0:
+        for i in range(12):
+            b.box(rot(z=360 * i / 12) @ at(0, 1.45, 0.205), (0.35, 0.12, 0.02), "pad_stripe" if i % 2 == 0 else "lamp_post")
+        for i in range(4):
+            a = math.radians(45 + 90 * i)
+            b.sphere(Matrix.Translation(Vector((math.cos(a) * 1.9, math.sin(a) * 1.9, 0.2))), 0.09, "lamp_glow", 1)
+    b.cone(at(0, 2.35, 0), 0.12, 0.08, 1.8, 6, "lamp_post")
+    b.sphere(at(0, 2.35, 1.9), 0.14, "awning_red", 1)
+    b.box(at(0, 2.35, 1.2), (0.5, 0.06, 0.35), "pad_stripe")
+
+
+def archive(b, lod):
+    """The Archive: a little domed museum with columns, steps and a
+    telescope on the roof, where donated finds are kept."""
+    segs = 16 if lod == 0 else 8
+    b.cone(at(0, 0, 0), 2.3, 2.2, 0.25, segs, "stone")
+    b.cone(at(0, 0, 0.25), 2.05, 2.0, 0.2, segs, "stone_light")
+    b.cone(at(0, 0, 0.45), 1.7, 1.7, 2.1, segs, "wall_cream")
+    b.cone(at(0, 0, 2.55), 1.95, 1.9, 0.22, segs, "stone_light")
+    b.lathe(at(0, 0, 2.77), [(1.7, 0.0), (1.55, 0.6), (1.15, 1.15), (0.6, 1.5), (0.0, 1.62)], segs, "roof_teal",
+            cap_bottom=True, cap_top=False, smooth=True)
+    # Columns round the front.
+    n = 7 if lod == 0 else 4
+    for i in range(n):
+        a = math.radians(-160 + i * 140 / (n - 1))
+        b.cone(Matrix.Translation(Vector((math.cos(a) * 1.88, math.sin(a) * 1.88, 0.45))), 0.14, 0.12, 2.1, 6, "stone_light")
+    # Door and steps at the front (-Y).
+    b.box(at(0, -1.7, 1.0), (0.9, 0.14, 1.3), "wood_dark", 0.03 if lod == 0 else 0.0)
+    b.cone(at(0, -1.7, 1.65) @ rot(x=90), 0.45, 0.45, 0.14, 10 if lod == 0 else 5, "wood_dark")
+    b.box(at(0, -2.35, 0.1), (1.4, 0.5, 0.2), "stone_light")
+    for x in (-1.1, 1.1):
+        b.cone(at(x, -1.3, 1.5) @ rot(x=90), 0.3, 0.3, 0.1, 10 if lod == 0 else 5, "window_glow")
+    # Telescope on top.
+    b.cone(at(0, 0, 4.35), 0.2, 0.16, 0.25, 8, "lamp_post")
+    b.cone(at(0, 0, 4.55) @ rot(x=-50), 0.14, 0.2, 1.1, 8, "gold")
+    if lod == 0:
+        b.cone(at(-1.9, -1.9, 0), 0.2, 0.24, 0.35, 8, "terracotta")
+        b.sphere(at(-1.9, -1.9, 0.5), 0.3, "leaf", 1, jitter=0.1, seed=60)
+
+
+def burrow_house(b, lod):
+    """A burrow house: a grassy mound with a round door, round windows, a
+    chimney pipe and flowers on top."""
+    segs = 16 if lod == 0 else 8
+    b.lathe(Matrix.Identity(4), [(2.1, 0.0), (2.05, 0.6), (1.8, 1.4), (1.2, 2.1), (0.0, 2.45)], segs, "moss",
+            cap_bottom=False, cap_top=False, smooth=True)
+    # Round door with a stone surround at the front (-Y).
+    b.cone(at(0, -1.85, 0.9) @ rot(x=90), 0.78, 0.78, 0.3, 12 if lod == 0 else 6, "stone_light")
+    b.cone(at(0, -2.12, 0.9) @ rot(x=90), 0.6, 0.6, 0.12, 12 if lod == 0 else 6, "roof_green")
+    b.sphere(at(0.3, -2.26, 0.85), 0.06, "gold", 1)
+    b.box(at(0, -2.3, 0.08), (1.2, 0.5, 0.16), "stone_light")
+    for angle in (-55, 55):
+        m = rot(z=angle) @ at(0, -1.9, 1.05) @ rot(x=65)
+        b.cone(m, 0.34, 0.34, 0.16, 10 if lod == 0 else 5, "wood")
+        b.cone(m @ at(0, 0, 0.1), 0.25, 0.25, 0.08, 10 if lod == 0 else 5, "window_glow")
+    b.cone(at(0.8, 0.6, 1.7), 0.14, 0.14, 1.0, 6, "lamp_post")
+    b.cone(at(0.8, 0.6, 2.7), 0.2, 0.2, 0.1, 6, "lamp_post")
+    if lod == 0:
+        for i in range(6):
+            a = math.radians(60 * i + 20)
+            b.flower(Matrix.Translation(Vector((math.cos(a), math.sin(a), 2.1))) @ rot(x=-15), 0.12,
+                     "flower" if i % 2 else "flower_yellow")
+        for i in range(9):
+            a = 360 * i / 9 + 30
+            if abs(((a + 180) % 360) - 180) < 30:
+                continue
+            b.sphere(rot(z=a) @ at(0, -2.1, 0.1) @ scale(1.3, 0.8, 0.7), 0.22, "stone", 0, jitter=0.15, seed=70 + i,
+                     flatten_below=0.0)
+
+
+def tide_pool(b, lod):
+    """A rock pool: a ring of wet rocks round a little basin of clear water,
+    with a starfish and a shell."""
+    b.cone(at(0, 0, -0.05), 1.0, 0.95, 0.1, 10 if lod == 0 else 6, "pool_water")
+    count = 9 if lod == 0 else 5
+    for i in range(count):
+        s = 0.28 + 0.1 * math.sin(i * 2.3)
+        b.sphere(rot(z=360 * i / count + 13) @ at(0, 1.0, 0.0) @ scale(1.3, 0.9, 0.6), s,
+                 "rock_dark" if i % 2 else "boulder", 1 if lod == 0 else 0, jitter=0.2, seed=80 + i, flatten_below=-0.05)
+    if lod == 0:
+        for k in range(5):
+            b.box(at(0.25, -0.15, 0.06) @ rot(z=72 * k) @ at(0, 0.1, 0), (0.07, 0.2, 0.04), "awning_red")
+        b.sphere(at(-0.3, 0.25, 0.06) @ scale(1, 0.8, 0.4), 0.12, "shell", 1)
+        b.leaf(at(0.35, 0.45, 0.05) @ rot(z=40), 0.18, "leaf_dark")
+
+
+def plot_marker(b, lod):
+    """An empty building plot: corner stakes with rope and a little sign."""
+    half = 2.0
+    for x in (-half, half):
+        for y in (-half, half):
+            b.box(at(x, y, 0.3), (0.12, 0.12, 0.6), "wood", 0.02 if lod == 0 else 0.0)
+    for (x0, y0, x1, y1) in ((-half, -half, half, -half), (-half, half, half, half),
+                             (-half, -half, -half, half), (half, -half, half, half)):
+        length = math.hypot(x1 - x0, y1 - y0)
+        angle = math.degrees(math.atan2(y1 - y0, x1 - x0))
+        b.box(at((x0 + x1) / 2, (y0 + y1) / 2, 0.45) @ rot(z=angle), (length, 0.03, 0.03), "canvas")
+    b.box(at(0.6, -half - 0.05, 0.45), (0.08, 0.08, 0.9), "wood_dark")
+    b.box(at(0.6, -half - 0.1, 0.85) @ rot(z=-6), (0.8, 0.06, 0.45), "wood_light", 0.02 if lod == 0 else 0.0)
+
+
+def fence(b, lod):
+    """One 2 m length of low picket fence, along X."""
+    for x in (-1.0, 1.0):
+        b.box(at(x, 0, 0.4), (0.12, 0.12, 0.8), "wood_dark", 0.02 if lod == 0 else 0.0)
+    for z in (0.3, 0.6):
+        b.box(at(0, 0, z), (2.0, 0.05, 0.08), "wood")
+    if lod == 0:
+        for i in range(6):
+            x = -0.75 + i * 0.3
+            b.box(at(x, -0.05, 0.36), (0.1, 0.04, 0.72), "wood_light")
+
 ASSETS = {
     "tree_round": tree_round,
     "tree_pine": tree_pine,
@@ -540,10 +724,17 @@ ASSETS = {
     "jungle_tree": jungle_tree,
     "ice_spire": ice_spire,
     "shrine": shrine,
+    "general_shop": general_shop,
+    "landing_pad": landing_pad,
+    "archive": archive,
+    "burrow_house": burrow_house,
+    "tide_pool": tide_pool,
+    "plot_marker": plot_marker,
+    "fence": fence,
 }
 
 # How far (metres) ambient occlusion rays look for blockers, per asset.
-AO_REACH = {"cottage": 0.7, "market_stall": 0.9, "cargo_pod": 0.8}
+AO_REACH = {"cottage": 0.7, "market_stall": 0.9, "cargo_pod": 0.8, "general_shop": 0.9, "archive": 0.8, "burrow_house": 0.7}
 
 
 # --- Baking and export ----------------------------------------------------------

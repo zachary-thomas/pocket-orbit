@@ -28,7 +28,7 @@ var _mesh_instance: MeshInstance3D
 func build(planet: Planet, world_seed: int) -> void:
 	radius = planet.data.radius + ALTITUDE
 	if material == null:
-		material = planet.surface_material.duplicate() as ShaderMaterial
+		material = planet.object_material.duplicate() as ShaderMaterial
 		material.set_shader_parameter("receive_cloud_shadow", false)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([world_seed, "clouds"])

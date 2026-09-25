@@ -22,6 +22,11 @@ class ItemDef:
 	var size := 1
 	var color := Color.WHITE
 	var tags: PackedStringArray = []
+	## Seasons it's found in where you look (see Seasons); empty = all year.
+	var seasons: PackedStringArray = []
+
+	func in_season(season: String) -> bool:
+		return seasons.is_empty() or season in seasons
 
 	func available_at(hour: float) -> bool:
 		if hours.x < hours.y:
@@ -110,5 +115,6 @@ static func _ensure_loaded() -> void:
 		item.size = int(entry.get("size", 1))
 		item.color = Color(entry.get("color", "ffffff"))
 		item.tags = PackedStringArray(entry.get("tags", []))
+		item.seasons = PackedStringArray(entry.get("seasons", []))
 		_items[item.id] = item
 		_order.append(item.id)

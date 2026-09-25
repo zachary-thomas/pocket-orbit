@@ -18,6 +18,11 @@ uniform vec3 focus_position;
 // edge beyond it, in metres.
 uniform float fade_radius = 1.1;
 uniform float fade_edge = 0.9;
+// Terrain and plants follow the seasons: leaves and grass turn golden in
+// autumn, and snow settles on everything facing up in winter, more so away
+// from the equator. Off for characters and items.
+global uniform float season_phase; // north: 0 spring equinox, .25 midsummer, .5 autumn, .75 midwinter
+uniform bool seasonal = false;
 
 varying vec3 world_pos;
 varying float sun_height;
@@ -33,6 +38,18 @@ float bayer4(vec2 p) {
 	int index = i.x + i.y * 4;
 	const float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
 	return (m[index] + 0.5) / 16.0;
+}
+
+vec3 seasonal_tint(vec3 albedo, vec3 up, vec3 normal) {
+	float phase = up.y < 0.0 ? fract(season_phase + 0.5) : season_phase;
+	float away = smoothstep(0.25, 0.6, abs(up.y));
+	float green = clamp((albedo.g - max(albedo.r, albedo.b)) * 6.0, 0.0, 1.0);
+	float autumn = away * smoothstep(0.47, 0.56, phase) * (1.0 - smoothstep(0.72, 0.8, phase));
+	vec3 fall = vec3(0.96, 0.62, 0.3) * (0.6 + dot(albedo, vec3(0.3)));
+	albedo = mix(albedo, fall, autumn * green * 0.6);
+	float winter = away * smoothstep(0.74, 0.8, phase) * (1.0 - smoothstep(0.95, 1.0, phase));
+	float snow = winter * smoothstep(0.55, 0.85, dot(normal, up)) * smoothstep(0.3, 0.65, abs(up.y));
+	return mix(albedo, vec3(0.94, 0.96, 1.0), snow * 0.85);
 }
 
 void fragment() {
@@ -55,9 +72,13 @@ void fragment() {
 	// Vertex colour carries baked ambient occlusion on models and the blended
 	// ground colour on terrain.
 	vec3 albedo = texture(palette, UV).rgb * COLOR.rgb;
+	vec3 from_center = world_pos - planet_center;
+	if (seasonal && UV.y < GLOW_ROW_START) {
+		vec3 world_normal = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+		albedo = seasonal_tint(albedo, normalize(from_center), world_normal);
+	}
 	ALBEDO = albedo;
 	ROUGHNESS = 1.0;
-	vec3 from_center = world_pos - planet_center;
 	sun_height = local_sun_height(from_center);
 	EMISSION = albedo * sky_fill(sun_height);
 	cloud_shade = 1.0;

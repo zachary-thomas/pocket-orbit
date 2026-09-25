@@ -26,6 +26,8 @@ func _run_all() -> void:
 	_test_tile_graph()
 	_test_props()
 	_test_shop_rules()
+	_test_seasons_and_tides()
+	_test_sanctuary()
 	print("\n%s" % ("All checks passed." if _failures == 0 else "%d check(s) FAILED." % _failures))
 	quit(_failures)
 
@@ -209,6 +211,7 @@ func _test_economy() -> void:
 			varies = true
 	_check(varies, "demand changes from day to day")
 	_check(Economy.hints(1, 100).size() == 3, "three demand-board hints")
+	_check(Economy.hints(1, 100, PackedStringArray(["mossback"])).size() == 4, "a villager species adds a hint")
 	var worth := 200
 	_check(Economy.purchase_chance(120, worth, 10) > Economy.purchase_chance(200, worth, 10), "cheaper sells more often")
 	_check(Economy.purchase_chance(500, worth, 10) < 0.1, "far too pricey almost never sells")
@@ -347,3 +350,106 @@ static func _has_point(points: PackedVector3Array, p: Vector3) -> bool:
 		if q.is_equal_approx(p):
 			return true
 	return false
+
+
+func _test_seasons_and_tides() -> void:
+	print("Seasons and tides")
+	var june := int(Time.get_unix_time_from_datetime_dict({"year": 2026, "month": 7, "day": 1}) / 86400)
+	var january := int(Time.get_unix_time_from_datetime_dict({"year": 2026, "month": 1, "day": 15}) / 86400)
+	_check(Seasons.season_at(june, 40.0) == "summer" and Seasons.season_at(june, -40.0) == "winter", "July: summer in the north, winter in the south")
+	_check(Seasons.season_at(january, 40.0) == "winter", "January is winter in the north")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var ok := true
+	for i in 60:
+		var f := CatchTables.fish(rng, "temperate", 12.0, "summer")
+		if f and not f.in_season("summer"):
+			ok = false
+	_check(ok, "only fish in season are caught")
+	var moon := Tides.moon_direction(0.0, 0.0)
+	var under := Tides.height(moon, moon)
+	var side := Tides.height(Vector3(-moon.z, 0, moon.x), moon)
+	_check(is_equal_approx(under, Tides.AMPLITUDE) and is_equal_approx(side, -Tides.AMPLITUDE), "high tide under the moon, low at right angles")
+	_check(is_equal_approx(Tides.height(-moon, moon), Tides.AMPLITUDE), "and high on the far side too")
+	var later := Tides.moon_direction(24.0 * 3600.0, 0.0)
+	_check(not later.is_equal_approx(moon), "the moon rises later each day")
+	_check(Tides.depth(10.0, 10.2, -0.5) < 0.0, "low tide uncovers shallow ground")
+
+
+func _test_sanctuary() -> void:
+	print("Sanctuary")
+	var state := GameState.new()
+	state.world_seed = 9
+	state.day = 1000
+	state.cottages.assign(["cottage-1", "cottage-2"])
+	state.stardust = 50000
+	state.debt = 0
+	state.inventory.add("wood", 40)
+	state.inventory.add("stone", 40)
+	state.inventory.add("clay", 10)
+	state.inventory.add("copper_ore", 5)
+	Commands.execute(state, {"type": "new_day", "day": 1001})
+	_check(VillageRules.pending_request(state).is_empty(), "no refugee writes while reputation is low")
+	state.reputation = 20
+	Commands.execute(state, {"type": "new_day", "day": 1002})
+	var letter := VillageRules.pending_request(state)
+	_check(not letter.is_empty() and letter["data"]["species"] == "mossback", "the first refugee writes when reputation is 20")
+	Commands.execute(state, {"type": "decline_resident", "id": letter["id"]})
+	Commands.execute(state, {"type": "new_day", "day": 1003})
+	_check(VillageRules.pending_request(state).is_empty(), "a declined refugee waits before asking again")
+	Commands.execute(state, {"type": "new_day", "day": 1006})
+	letter = VillageRules.pending_request(state)
+	_check(not letter.is_empty(), "and asks again later")
+	var accepted := Commands.execute(state, {"type": "accept_resident", "id": letter["id"]})
+	_check(accepted["ok"] and state.villagers.size() == 1 and state.villagers[0]["home"] == "cottage-1", "they move into an empty cottage")
+	_check(VillageRules.sanctuary_started(state), "the sanctuary has started")
+
+	_check(Commands.execute(state, {"type": "upgrade_shop"})["ok"] and state.shelves.size() == 12, "upgrade to the general shop (12 shelves)")
+	_check(not Commands.execute(state, {"type": "set_hours", "open": 10, "close": 12})["ok"], "can't keep the shop open under 4 hours")
+	Commands.execute(state, {"type": "set_hours", "open": 6, "close": 22})
+	_check(Economy.is_open(state, 21.5) and not Economy.is_open(state, 5.0), "shop hours are respected")
+	var pad := Commands.execute(state, {"type": "build", "kind": "landing_pad", "plot": "plot-0"})
+	_check(pad["ok"] and state.has_building("landing_pad"), "build a landing pad on a plot")
+	_check(not Commands.execute(state, {"type": "build", "kind": "archive", "plot": "plot-0"})["ok"], "only one building per plot")
+
+	state.seen["wood"] = true
+	var ordered := Commands.execute(state, {"type": "order", "item": "wood", "count": 5})
+	_check(ordered["ok"] and state.orders.size() == 1, "order from the catalogue")
+	_check(not Commands.execute(state, {"type": "order", "item": "ammonite"})["ok"], "fossils aren't in the catalogue")
+	Commands.execute(state, {"type": "new_day", "day": 1007})
+	_check(state.parcels.size() == 1 and state.orders.is_empty(), "the parcel lands the next morning")
+	var wood := state.inventory.count_of("wood")
+	Commands.execute(state, {"type": "open_parcels"})
+	_check(state.inventory.count_of("wood") == wood + 5 and state.parcels.is_empty(), "open the parcel")
+
+	Commands.execute(state, {"type": "build", "kind": "archive", "plot": "plot-1"})
+	state.inventory.add("ammonite")
+	var slot := -1
+	for i in state.inventory.size():
+		if state.inventory.item_at(i) == "ammonite":
+			slot = i
+	_check(Commands.execute(state, {"type": "donate", "slot": slot})["ok"] and state.archive.has("ammonite"), "donate a fossil to the Archive")
+
+	var v: Dictionary = state.villagers[0]
+	var talk := Commands.execute(state, {"type": "talk_villager", "id": v["id"]})
+	_check(talk["ok"] and talk["line"] != "" and v["friendship"] == 1, "chatting makes friends")
+	Commands.execute(state, {"type": "talk_villager", "id": v["id"]})
+	_check(v["friendship"] == 1, "once a day")
+
+	var guard := 0
+	while not VillageRules.auditor_here(state) and guard < 20:
+		Commands.execute(state, {"type": "new_day", "day": state.day + 1})
+		guard += 1
+	_check(VillageRules.auditor_here(state), "the auditor turns up (%d days on)" % guard)
+	var notices := state.mail.filter(func(m): return m["kind"] == "audit")
+	_check(not notices.is_empty(), "with a letter the day before")
+	_check(VillageRules.audit_questions(state).size() == 3, "three questions")
+	Commands.execute(state, {"type": "audit_answer", "points": 0})
+	var verdict := Commands.execute(state, {"type": "finish_audit"})
+	_check(verdict["ok"] and state.audit["next"] > state.day, "a clean audit, and the next one is scheduled")
+	var next: int = state.audit["next"]
+	Commands.execute(state, {"type": "new_day", "day": next})
+	Commands.execute(state, {"type": "new_day", "day": next + 1})
+	_check(state.audit["suspicion"] == 10, "ignoring the auditor raises suspicion")
+	var saved := GameState.from_dict(state.to_dict())
+	_check(JSON.stringify(saved.to_dict()) == JSON.stringify(state.to_dict()), "the sanctuary survives saving")

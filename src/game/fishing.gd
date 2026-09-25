@@ -131,7 +131,7 @@ func _rod_tip() -> Vector3:
 
 func _land_fish() -> void:
 	var lat := SphereMath.latitude_degrees(game.planet.up_at(_target))
-	var fish := CatchTables.fish(_rng, CatchTables.water_kind(lat), game.hours_at(_target))
+	var fish := CatchTables.fish(_rng, CatchTables.water_kind(lat), game.hours_at(_target), game.season_at(_target))
 	if fish == null:
 		game.toast.emit("Nothing's biting here right now.")
 	else:

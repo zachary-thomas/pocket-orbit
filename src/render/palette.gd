@@ -89,6 +89,16 @@ const COLORS := {
 	"blush": Color("f3a0a0"),
 	"bedroll": Color("8aa06a"),
 	"bag": Color("a8744c"),
+	"roof_green": Color("6fae78"),
+	"roof_teal": Color("4f9ea3"),
+	"pad_metal": Color("b8bfcc"),
+	"pad_stripe": Color("f2c14e"),
+	"pool_water": Color("4e9bb3"),
+	"moss": Color("86b865"),
+	"shell": Color("f4c9b8"),
+	"canvas": Color("f0e2c4"),
+	"moon": Color("e9e6f2"),
+	"moon_dark": Color("b9b4cc"),
 }
 
 const GLOW_COLORS := {

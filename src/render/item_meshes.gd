@@ -36,6 +36,10 @@ static func build(md: MeshData, item: ItemDatabase.ItemDef, xf: Transform3D) -> 
 			_material(md, xf, color, item.id)
 		"fruit":
 			_fruit(md, xf, color, item.id)
+		"fossil":
+			_fossil(md, xf, color, uv, item.id)
+		"shore":
+			_shore(md, xf, color, uv, item.id)
 	md.tint = Color.WHITE
 
 
@@ -123,6 +127,8 @@ static func _material(md: MeshData, xf: Transform3D, color: Color, id: String) -
 			for i in 2:
 				var log := xf.translated_local(Vector3(0.18, 0.07 + i * 0.12, (i - 0.5) * 0.05)).rotated_local(Vector3.BACK, PI / 2)
 				md.add_prism(log, 0.065, 0.065, 0.36, 7, Palette.uv("white"))
+		"clay":
+			md.add_blob(xf.translated_local(Vector3(0, 0.08, 0)), Vector3(0.15, 0.08, 0.14), Palette.uv("white"), 1)
 		"stone":
 			md.add_blob(xf.translated_local(Vector3(0, 0.1, 0)), Vector3(0.15, 0.1, 0.13), Palette.uv("white"))
 		_:
@@ -145,3 +151,68 @@ static func _fruit(md: MeshData, xf: Transform3D, color: Color, id: String) -> v
 	md.tint = Color.WHITE
 	md.add_box(xf.translated_local(Vector3(0, 0.29 if id == "apple" else 0.25, 0.01)), Vector3(0.02, 0.06, 0.02), Palette.uv("trunk"))
 	md.add_blob(xf.translated_local(Vector3(0.04, 0.3 if id == "apple" else 0.26, 0.01)), Vector3(0.05, 0.012, 0.025), Palette.uv("leaf"))
+
+
+## Fossils sit on a slab of the rock they came out of.
+static func _fossil(md: MeshData, xf: Transform3D, color: Color, uv: Vector2, id: String) -> void:
+	md.tint = Palette.linear("sand")
+	md.add_box(xf.translated_local(Vector3(0, 0.03, 0)), Vector3(0.34, 0.06, 0.26), Palette.uv("white"))
+	md.tint = color
+	var top := xf.translated_local(Vector3(0, 0.06, 0))
+	match id:
+		"ammonite":
+			# A coiled shell: shrinking rings in a spiral.
+			for i in 7:
+				var a := i * 0.9
+				var r := 0.1 * (1.0 - i * 0.12)
+				md.add_blob(top.translated_local(Vector3(cos(a) * r, 0.05, sin(a) * r)), Vector3.ONE * (0.055 - i * 0.006), uv)
+		"amber_bug":
+			md.add_blob(top.translated_local(Vector3(0, 0.06, 0)), Vector3(0.1, 0.07, 0.08), uv, 1)
+			md.tint = Palette.linear("trunk")
+			md.add_blob(top.translated_local(Vector3(0, 0.07, 0)), Vector3(0.035, 0.02, 0.02), Palette.uv("white"))
+		"raptor_claw":
+			for i in 4:
+				md.add_prism(top.translated_local(Vector3(-0.08 + i * 0.04, 0.02 + i * 0.03, 0)).rotated_local(Vector3.BACK, -0.9 - i * 0.2),
+					0.035 - i * 0.007, 0.03 - i * 0.007, 0.06, 6, uv)
+		"shellback_skull", "skywhale_bone":
+			md.add_blob(top.translated_local(Vector3(-0.05, 0.05, 0)), Vector3(0.1, 0.06, 0.08), uv)
+			md.add_blob(top.translated_local(Vector3(0.09, 0.04, 0)), Vector3(0.06, 0.04, 0.05), uv)
+		_:
+			# A flat impression: a spine and ribs (fern, trilobite, star lizard).
+			md.add_box(top.translated_local(Vector3(0, 0.01, 0)), Vector3(0.24, 0.02, 0.03), uv)
+			for i in 5:
+				md.add_box(top.translated_local(Vector3(-0.09 + i * 0.045, 0.01, 0)).rotated_local(Vector3.UP, 0.3), Vector3(0.02, 0.018, 0.16 - absf(i - 2) * 0.03), uv)
+
+
+static func _shore(md: MeshData, xf: Transform3D, color: Color, uv: Vector2, id: String) -> void:
+	md.tint = color
+	match id:
+		"starfish":
+			for i in 5:
+				var arm := xf.rotated_local(Vector3.UP, i * TAU / 5.0).translated_local(Vector3(0, 0.025, 0.07))
+				md.add_box(arm, Vector3(0.05, 0.035, 0.13), uv)
+			md.add_blob(xf.translated_local(Vector3(0, 0.03, 0)), Vector3(0.05, 0.03, 0.05), uv)
+		"sea_urchin":
+			md.add_blob(xf.translated_local(Vector3(0, 0.07, 0)), Vector3(0.09, 0.07, 0.09), uv, 1)
+			for i in 10:
+				var d := Vector3(cos(i * 2.4), 0.6 + 0.4 * sin(i * 1.7), sin(i * 2.4)).normalized()
+				md.add_prism(Transform3D(SphereMath.basis_from_up(d, 0.0), xf * Vector3(0, 0.07, 0) + d * 0.07), 0.012, 0.0, 0.07, 3, uv)
+		"conch", "hermit_crab":
+			md.add_prism(xf.translated_local(Vector3(0, 0.08, 0)).rotated_local(Vector3.BACK, PI / 2), 0.09, 0.0, 0.22, 7, uv)
+			md.add_prism(xf.translated_local(Vector3(0, 0.08, 0)).rotated_local(Vector3.BACK, -PI / 2), 0.09, 0.05, 0.06, 7, uv)
+			if id == "hermit_crab":
+				md.tint = Palette.linear("scarf")
+				for side in [-1.0, 1.0]:
+					md.add_blob(xf.translated_local(Vector3(-0.1, 0.03, side * 0.05)), Vector3(0.035, 0.03, 0.03), Palette.uv("white"))
+		"sea_glass":
+			for p: Vector3 in [Vector3(0, 0.02, 0), Vector3(0.07, 0.02, 0.04), Vector3(-0.05, 0.02, 0.05)]:
+				md.add_blob(xf.translated_local(p), Vector3(0.05, 0.02, 0.04), Palette.uv("lamp_glow"))
+		"pearl_oyster":
+			md.add_blob(xf.translated_local(Vector3(0, 0.04, 0)), Vector3(0.12, 0.04, 0.1), uv)
+			md.tint = Color.WHITE
+			md.add_blob(xf.translated_local(Vector3(0, 0.09, 0)), Vector3.ONE * 0.035, Palette.uv("lamp_glow"), 1)
+		_:
+			# A fan-shaped scallop: ribs splaying from the hinge.
+			for i in 7:
+				var rib := xf.rotated_local(Vector3.UP, (i - 3) * 0.28).translated_local(Vector3(0, 0.03, 0.07))
+				md.add_box(rib.rotated_local(Vector3.RIGHT, 0.18), Vector3(0.035, 0.03, 0.15), uv)

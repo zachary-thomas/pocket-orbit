@@ -44,3 +44,15 @@ cloud_rotation={
 "type": "float",
 "value": 0.0
 }
+moon_direction={
+"type": "vec3",
+"value": Vector3(1, 0, 0)
+}
+tide_amplitude={
+"type": "float",
+"value": 0.5
+}
+season_phase={
+"type": "float",
+"value": 0.25
+}

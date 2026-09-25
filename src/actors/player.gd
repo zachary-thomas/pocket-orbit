@@ -130,7 +130,7 @@ func is_moving() -> bool:
 	return _moving
 
 
-## Shows a tool in hand: "rod", "net", "axe", "pick" or "" for none.
+## Shows a tool in hand: "rod", "net", "axe", "pick", "shovel" or "" for none.
 func hold(tool: String) -> void:
 	for name: String in _tools:
 		_tools[name].visible = name == tool
@@ -227,6 +227,11 @@ func _build_tools(material: Material) -> void:
 		"pick": func(md: MeshData) -> void:
 			md.add_prism(Transform3D(Basis(Vector3.RIGHT, -0.4), Vector3.ZERO), 0.035, 0.03, 0.8, 5, handle)
 			md.add_box(Transform3D(Basis(Vector3.RIGHT, -0.4), Vector3.ZERO).translated_local(Vector3(0, 0.74, 0)), Vector3(0.06, 0.07, 0.56), Palette.uv("stone_light")),
+		"shovel": func(md: MeshData) -> void:
+			var shaft := Transform3D(Basis(Vector3.RIGHT, -0.5), Vector3.ZERO)
+			md.add_prism(shaft, 0.03, 0.03, 0.9, 5, handle)
+			md.add_box(shaft.translated_local(Vector3(0, -0.02, 0)), Vector3(0.16, 0.04, 0.04), handle)
+			md.add_box(shaft.translated_local(Vector3(0, 1.0, 0)), Vector3(0.22, 0.26, 0.03), Palette.uv("stone_light")),
 	}
 	for name: String in shapes:
 		var md := MeshData.new()

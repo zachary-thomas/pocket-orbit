@@ -14,9 +14,9 @@ extends RefCounted
 const TAGS := ["cold", "shiny", "sweet", "glowing", "spiky", "tiny", "big"]
 const PRICE_MIN := 0.6
 const PRICE_MAX := 1.8
-## Shop hours, local time at home.
-const OPENS_AT := 8.0
-const CLOSES_AT := 20.0
+## Market stall hours, local time at home. The general shop sets its own.
+const OPENS_AT := 8
+const CLOSES_AT := 20
 
 
 static func _rng(world_seed: int, day: int, salt: String) -> RandomNumberGenerator:
@@ -114,7 +114,8 @@ static func seconds_between_customers(reputation: int, night: bool) -> float:
 ## What one browsing customer does: looks over the stocked shelves, picks one
 ## (good deals catch the eye more often) and decides whether to buy it.
 ## Returns {} if every shelf is empty, else {"shelf", "asking", "worth", "buy"}.
-static func customer_choice(rng: RandomNumberGenerator, state: GameState) -> Dictionary:
+## A villager (`species` set) values what their species likes more.
+static func customer_choice(rng: RandomNumberGenerator, state: GameState, species: String = "") -> Dictionary:
 	var options: Array[Dictionary] = []
 	var total := 0.0
 	for i in state.shelves.size():
@@ -122,6 +123,8 @@ static func customer_choice(rng: RandomNumberGenerator, state: GameState) -> Dic
 		if shelf.is_empty():
 			continue
 		var worth := value_today(shelf["item"], state.world_seed, state.day)
+		if species != "":
+			worth = maxi(1, roundi(worth * VillageData.liking(species, shelf["item"])))
 		var asking := price(shelf["item"], float(shelf["price"]))
 		var weight := 0.5 + purchase_chance(asking, worth, state.reputation)
 		options.append({"shelf": i, "asking": asking, "worth": worth, "weight": weight})
@@ -140,12 +143,29 @@ static func customer_choice(rng: RandomNumberGenerator, state: GameState) -> Dic
 	return choice
 
 
-static func is_open(local_hours: float) -> bool:
-	return local_hours >= OPENS_AT and local_hours < CLOSES_AT
+static func opening_hours(state: GameState) -> Vector2i:
+	return state.open_hours if state.shop_tier >= 2 else Vector2i(OPENS_AT, CLOSES_AT)
 
 
-## The three demand-board hints for a day.
-static func hints(world_seed: int, day: int) -> PackedStringArray:
+static func is_open(state: GameState, local_hours: float) -> bool:
+	var hours := opening_hours(state)
+	return local_hours >= hours.x and local_hours < hours.y
+
+
+## What one of the village's species is craving today, as a hint.
+static func species_hint(world_seed: int, day: int, species_id: String) -> String:
+	var species := VillageData.species(species_id)
+	if species.is_empty():
+		return ""
+	var likes: Array = species["likes"]
+	var like: String = likes[_rng(world_seed, day, "likes:" + species_id).randi() % likes.size()]
+	var what := ItemDatabase.category_name(like).to_lower() if like in ItemDatabase.categories() else "%s things" % like
+	return "%s are craving %s." % [species["plural"], what]
+
+
+## The demand-board hints for a day: three about everyone, plus one about a
+## species living in the village (a different one each day).
+static func hints(world_seed: int, day: int, species_here: PackedStringArray = PackedStringArray()) -> PackedStringArray:
 	var best := ""
 	var worst := ""
 	for category in ItemDatabase.categories():
@@ -154,8 +174,11 @@ static func hints(world_seed: int, day: int) -> PackedStringArray:
 			best = category
 		if worst == "" or d < category_demand(world_seed, day, worst):
 			worst = category
-	return PackedStringArray([
+	var result := PackedStringArray([
 		"Everyone's asking for %s today." % ItemDatabase.category_name(best).to_lower(),
 		"Customers are craving %s things." % hot_tag(world_seed, day),
 		"Nobody wants %s right now." % ItemDatabase.category_name(worst).to_lower(),
 	])
+	if not species_here.is_empty():
+		result.append(species_hint(world_seed, day, species_here[posmod(day, species_here.size())]))
+	return result

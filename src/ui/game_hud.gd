@@ -18,6 +18,7 @@ var _stardust: Label
 var _debt: Label
 var _action: Button
 var _action_hint: Label
+var _mail: Button
 var _toasts: VBoxContainer
 var _dim: ColorRect
 var _panel_host: CenterContainer
@@ -132,6 +133,14 @@ func _ready() -> void:
 	bag.add_to_group("ui_blocker")
 	_root.add_child(bag)
 
+	# Top left, under the clock: the mailbox, with a count of unread letters.
+	_mail = UiTheme.quiet_button("Mail", func() -> void: toggle_panel("mail"), Vector2(120, 50))
+	_mail.position = Vector2(24, 104)
+	_mail.add_theme_stylebox_override("normal", UiTheme.box(UiTheme.NAVY, 25, UiTheme.CREAM, 3, 3))
+	_mail.add_theme_color_override("font_color", UiTheme.CREAM)
+	_mail.add_to_group("ui_blocker")
+	_root.add_child(_mail)
+
 	# Toasts, bottom centre between the stick and the buttons.
 	_toasts = VBoxContainer.new()
 	_toasts.anchor_left = 0.5
@@ -175,6 +184,11 @@ func setup(p_game: Game, p_interactions: Interactions) -> void:
 		"shop": ShopPanel.new(game),
 		"storage": StoragePanel.new(game),
 		"vessa": VessaPanel.new(game),
+		"mail": MailPanel.new(game),
+		"build": BuildPanel.new(game),
+		"archive": ArchivePanel.new(game),
+		"villager": VillagerPanel.new(game),
+		"audit": AuditPanel.new(game),
 	}
 	for panel: GamePanel in _panels.values():
 		panel.visible = false
@@ -261,7 +275,15 @@ func _process(delta: float) -> void:
 	var minutes := int(hours * 60.0)
 	@warning_ignore("integer_division")
 	_time.text = "%02d:%02d" % [minutes / 60, minutes % 60]
-	_date.text = "%s  ·  %s" % [date_label(game.sky.day_index), "stall busy" if not game.is_night_at_home() else "night, fewer customers"]
+	var season := Seasons.display_name(game.season_at(game.player.global_position))
+	var shop := ""
+	if game.state.shop_tier >= 2:
+		shop = "shop open" if game.is_shop_open() else "shop closed"
+	else:
+		shop = "stall busy" if not game.is_night_at_home() else "night, fewer customers"
+	_date.text = "%s  ·  %s  ·  %s" % [date_label(game.sky.day_index), season, shop]
+	var unread := game.state.unread_mail()
+	_mail.text = "Mail (%d)" % unread if unread > 0 else "Mail"
 	# Count Stardust up or down toward the real amount.
 	var target := float(game.state.stardust)
 	_shown_stardust = move_toward(_shown_stardust, target, maxf(absf(target - _shown_stardust) * 6.0, 30.0) * delta)

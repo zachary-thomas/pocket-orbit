@@ -44,7 +44,9 @@ func _process(delta: float) -> void:
 	_timer -= delta
 	if _timer <= 0.0:
 		_timer = Economy.seconds_between_customers(game.state.reputation, game.is_night_at_home()) * _rng.randf_range(0.7, 1.3)
-		if get_child_count() < MAX_AT_ONCE and _has_stock():
+		# The market stall trades all day and night; the general shop keeps hours.
+		var open := game.state.shop_tier < 2 or game.is_shop_open()
+		if open and get_child_count() < MAX_AT_ONCE and has_stock():
 			spawn()
 	for customer: Customer in get_children():
 		match customer.stage:
@@ -63,7 +65,7 @@ func _process(delta: float) -> void:
 ## Sends a new customer toward the stall. Returns it (or null if there was
 ## nowhere for them to come from).
 func spawn() -> Customer:
-	var start := _edge_tile()
+	var start := edge_tile()
 	if start == -1:
 		return null
 	var spot := _free_spot()
@@ -82,7 +84,14 @@ func spawn() -> Customer:
 
 
 func _decide(customer: Customer) -> void:
-	var choice := Economy.customer_choice(_rng, game.state)
+	serve(customer, "")
+	_leave(customer)
+
+
+## Someone at the counter picks something and buys it or walks off, saying
+## how they feel about the price. Villagers pass their species.
+func serve(customer: Npc, species: String) -> void:
+	var choice := Economy.customer_choice(_rng, game.state, species)
 	if choice.is_empty():
 		customer.say("All sold out?")
 	else:
@@ -94,12 +103,11 @@ func _decide(customer: Customer) -> void:
 		else:
 			game.run({"type": "customer_left", "asking": choice["asking"], "worth": choice["worth"]})
 			customer.say("Too pricey..." if feel in ["pricey", "too much"] else "Maybe later.", 3.0)
-	_leave(customer)
 
 
 func _leave(customer: Customer) -> void:
 	customer.stage = Stage.LEAVING
-	var away := _edge_tile()
+	var away := edge_tile()
 	var route := game.graph.route(customer.tile, game.planet.tile_center(away)) if away != -1 else PackedVector3Array()
 	if route.is_empty():
 		customer.queue_free()
@@ -108,7 +116,7 @@ func _leave(customer: Customer) -> void:
 	customer.arrived.connect(customer.queue_free, CONNECT_ONE_SHOT)
 
 
-func _has_stock() -> bool:
+func has_stock() -> bool:
 	for shelf in game.state.shelves:
 		if not shelf.is_empty():
 			return true
@@ -116,7 +124,7 @@ func _has_stock() -> bool:
 
 
 ## A random land tile on the ring EDGE_RING tiles out from home.
-func _edge_tile() -> int:
+func edge_tile() -> int:
 	var data := game.planet.data
 	var ring: Array[int] = []
 	var around := data.tiles_within(data.home_tile, EDGE_RING)
