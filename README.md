@@ -41,6 +41,21 @@ To save a set of screenshots at different times of day (and a walk over the nort
 godot --path . -- --tour=/some/folder
 ```
 
+## Models
+
+Trees, rocks, bushes, the market stall, the cottage and the lamp post are built by a Blender script and exported to `assets/models/` (stored with Git LFS):
+
+```sh
+blender -b -P tools/blender/build_assets.py              # all models
+blender -b -P tools/blender/build_assets.py -- cottage   # just one
+```
+
+Each model gets a close-up version and a much simpler far-away one (`_lod1`). Colours come from the shared palette in `src/render/palette.gd`, and the soft corner shading is baked into vertex colours. After rebuilding, run `godot --headless --import`. To see every model lit by the game's shader, run:
+
+```sh
+godot --path . --script res://tools/model_gallery.gd -- --out=gallery.png [--focus=cottage]
+```
+
 ## Layout
 
 ```
@@ -48,11 +63,11 @@ src/planet/   HexSphere, PlanetGenerator, PlanetData, PlanetMesher, Planet
 src/actors/   GravityBody (walking on a sphere), Player
 src/camera/   PlanetCamera (tangent-frame third-person camera, orbit view)
 src/sky/      SkySystem (clock, sun, space sky), CloudLayer
-src/render/   Palette (the shared palette texture), MeshData (mesh building)
+src/render/   Palette (the shared palette texture), MeshData (mesh building), PropLibrary (loads models)
 src/ui/       DebugHud, TouchStick
 shaders/      planet surface, water, atmosphere, space sky
 tests/        headless checks
-tools/        screenshot tour
+tools/        screenshot tour, model gallery, blender/ (model build script)
 ```
 
 Concept art lives in `images art direction/` and `images ui direction/`. Those folders contain a `.gdignore` file so Godot doesn't import them. New game assets (models, textures, audio) go under `assets/` and are stored with Git LFS.

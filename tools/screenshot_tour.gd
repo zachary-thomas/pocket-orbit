@@ -33,6 +33,7 @@ func _run() -> void:
 	await _surface_shot("03_surface_sunset_facing_sun", 18.7, true)
 	await _surface_shot("04_surface_dusk_village", 19.6, false)
 	await _surface_shot("05_surface_night_village", 23.0, false)
+	await _cliff_shot("10_surface_cliffs_and_trees", 15.0)
 
 	# From orbit.
 	_sky.set_home_hours(12.0)
@@ -62,6 +63,36 @@ func _surface_shot(file: String, hours: float, face_sun: bool) -> void:
 		_camera.surface_forward = SphereMath.tangent(_sky.sun_direction, _player.get_up())
 	await _frames(4)
 	await _save(file)
+
+
+## Stands near home at the foot of a terrace with trees on it, looking up at it.
+func _cliff_shot(file: String, hours: float) -> void:
+	var data := _planet.data
+	var area := data.tiles_within(data.home_tile, 7)
+	var best := -1
+	var target := -1
+	for t: int in area:
+		if area[t] < 3 or data.is_water(t):
+			continue
+		for n in data.sphere.neighbors(t):
+			if data.level[n] == data.level[t] + 1 and data.biome[n] != Biome.OCEAN:
+				if best == -1 or t < best:
+					best = t
+					target = n
+	if best == -1:
+		return
+	_sky.set_home_hours(hours)
+	_sky.paused = true
+	_player.spawn(_planet, best)
+	_camera.set_orbit_mode(false, true)
+	_camera.surface_forward = SphereMath.tangent(_planet.tile_center(target) - _planet.tile_center(best), _player.get_up())
+	_player.heading = _camera.surface_forward
+	_camera.distance = 14.0
+	_camera.pitch_degrees = 38.0
+	await _frames(4)
+	await _save(file)
+	_camera.distance = 8.5
+	_camera.pitch_degrees = 16.0
 
 
 func _orbit_shot(file: String, direction: Vector3, radii: float) -> void:

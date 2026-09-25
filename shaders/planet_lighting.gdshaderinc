@@ -15,10 +15,10 @@ uniform sampler2D cloud_shadow_map : hint_default_black, filter_linear, repeat_e
 uniform float cloud_radius = 152.0;
 uniform float cloud_shadow_strength = 0.4;
 
-uniform vec3 day_fill : source_color = vec3(0.60, 0.70, 0.92);
+uniform vec3 day_fill : source_color = vec3(0.76, 0.76, 0.93);
 uniform vec3 night_fill : source_color = vec3(0.16, 0.20, 0.42);
 uniform vec3 dusk_fill : source_color = vec3(0.95, 0.55, 0.60);
-uniform float fill_strength = 0.38;
+uniform float fill_strength = 0.5;
 
 // Sun height at this spot: 1 = overhead, 0 = on the horizon, < 0 = night.
 float local_sun_height(vec3 from_center) {

@@ -6,13 +6,15 @@ extends RefCounted
 ## Every triangle takes the direction it should face, and the winding is fixed
 ## up to match, so callers never have to think about vertex order. Godot treats
 ## clockwise triangles as front-facing, so that's the order they're stored in.
-## All colour comes from Palette swatch UVs.
+## Colour comes from Palette swatch UVs, multiplied by a per-vertex colour:
+## baked ambient occlusion on models, and the blended ground colour on terrain.
 
 const FRONT_IS_CLOCKWISE := true
 
 var vertices := PackedVector3Array()
 var normals := PackedVector3Array()
 var uvs := PackedVector2Array()
+var colors := PackedColorArray()
 
 static var _blob_cache := {}
 
@@ -26,8 +28,9 @@ func triangle_count() -> int:
 	return vertices.size() / 3
 
 
-## Triangle with its own normal at each corner (for smooth shading).
-func add_tri_smooth(a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3, uv: Vector2) -> void:
+## Triangle with its own normal and colour at each corner.
+func add_tri_shaded(a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3,
+		ca: Color, cb: Color, cc: Color, uv: Vector2) -> void:
 	# (b - a) x (c - a) points toward whoever sees a, b, c counter-clockwise.
 	if (b - a).cross(c - a).dot(na + nb + nc) < 0.0:
 		var p := b
@@ -36,13 +39,21 @@ func add_tri_smooth(a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3
 		var q := nb
 		nb = nc
 		nc = q
-	_push(a, na, uv)
+		var r := cb
+		cb = cc
+		cc = r
+	_push(a, na, uv, ca)
 	if FRONT_IS_CLOCKWISE:
-		_push(c, nc, uv)
-		_push(b, nb, uv)
+		_push(c, nc, uv, cc)
+		_push(b, nb, uv, cb)
 	else:
-		_push(b, nb, uv)
-		_push(c, nc, uv)
+		_push(b, nb, uv, cb)
+		_push(c, nc, uv, cc)
+
+
+## Triangle with its own normal at each corner (for smooth shading).
+func add_tri_smooth(a: Vector3, b: Vector3, c: Vector3, na: Vector3, nb: Vector3, nc: Vector3, uv: Vector2) -> void:
+	add_tri_shaded(a, b, c, na, nb, nc, Color.WHITE, Color.WHITE, Color.WHITE, uv)
 
 
 ## Flat-shaded triangle facing `normal`.
@@ -60,6 +71,45 @@ func add_tri_facing(a: Vector3, b: Vector3, c: Vector3, outward: Vector3, uv: Ve
 	if n.dot(outward) < 0.0:
 		n = -n
 	add_tri(a, b, c, n, uv)
+
+
+## Flat-shaded quad a-b-c-d with a colour per corner.
+func add_quad_shaded(a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3,
+		ca: Color, cb: Color, cc: Color, cd: Color, uv: Vector2) -> void:
+	add_tri_shaded(a, b, c, normal, normal, normal, ca, cb, cc, uv)
+	add_tri_shaded(a, c, d, normal, normal, normal, ca, cc, cd, uv)
+
+
+## Appends a model's triangles (Mesh surface arrays, as loaded by
+## PropLibrary), placed with `xf`. The arrays are already wound the way Godot
+## expects, so they're copied as they are.
+func add_arrays(xf: Transform3D, arrays: Array) -> void:
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var norms: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var tex: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+	var cols = arrays[Mesh.ARRAY_COLOR]
+	var indices = arrays[Mesh.ARRAY_INDEX]
+	var normal_basis := xf.basis.inverse().transposed()
+	var count: int = indices.size() if indices != null else verts.size()
+	for k in count:
+		var i: int = indices[k] if indices != null else k
+		vertices.append(xf * verts[i])
+		normals.append((normal_basis * norms[i]).normalized())
+		uvs.append(tex[i])
+		colors.append(cols[i] if cols != null else Color.WHITE)
+
+
+## Flat-shaded triangle using its true face normal (flipped to face roughly
+## along `outward`), with a colour per corner.
+func add_tri_facing_shaded(a: Vector3, b: Vector3, c: Vector3, outward: Vector3,
+		ca: Color, cb: Color, cc: Color, uv: Vector2) -> void:
+	var n := (b - a).cross(c - a)
+	if n.length_squared() < 1e-14:
+		return
+	n = n.normalized()
+	if n.dot(outward) < 0.0:
+		n = -n
+	add_tri_shaded(a, b, c, n, n, n, ca, cb, cc, uv)
 
 
 ## Quad a-b-c-d (corners in order around its edge) facing `normal`.
@@ -124,22 +174,29 @@ func add_blob(xf: Transform3D, radii: Vector3, uv: Vector2, detail: int = 0) -> 
 		add_tri_facing(a, b, c, (a + b + c) / 3.0 - xf.origin, uv)
 
 
-func to_mesh(material: Material) -> ArrayMesh:
+func to_arrays() -> Array:
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	return arrays
+
+
+func to_mesh(material: Material) -> ArrayMesh:
+	var arrays := to_arrays()
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	mesh.surface_set_material(0, material)
 	return mesh
 
 
-func _push(p: Vector3, n: Vector3, uv: Vector2) -> void:
+func _push(p: Vector3, n: Vector3, uv: Vector2, color: Color = Color.WHITE) -> void:
 	vertices.append(p)
 	normals.append(n)
 	uvs.append(uv)
+	colors.append(color)
 
 
 ## Unit icosphere as a flat list of triangle corners.

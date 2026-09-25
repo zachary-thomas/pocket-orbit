@@ -1,5 +1,6 @@
 // Shared material for every low-poly model: terrain, props, characters,
-// clouds. Colour comes from the palette texture (UVs point at a swatch).
+// clouds. Colour comes from the palette texture (UVs point at a swatch)
+// times the vertex colour.
 shader_type spatial;
 render_mode specular_disabled;
 
@@ -20,7 +21,9 @@ void vertex() {
 }
 
 void fragment() {
-	vec3 albedo = texture(palette, UV).rgb;
+	// Vertex colour carries baked ambient occlusion on models and the blended
+	// ground colour on terrain.
+	vec3 albedo = texture(palette, UV).rgb * COLOR.rgb;
 	ALBEDO = albedo;
 	ROUGHNESS = 1.0;
 	vec3 from_center = world_pos - planet_center;

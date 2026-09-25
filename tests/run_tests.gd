@@ -118,12 +118,16 @@ func _test_mesher() -> void:
 	print("PlanetMesher")
 	var data := PlanetGenerator.generate(1)
 	var built := PlanetMesher.build(data)
-	var triangles := 0
-	for md: MeshData in built["chunks"]:
-		triangles += md.triangle_count()
-	print("  info  %d triangles across %d chunks, %d lamps" % [triangles, built["chunks"].size(), built["lamps"].size()])
-	# Horizon culling draws at most about half of this at once.
-	_check(triangles > 10000 and triangles < 160000, "whole-planet mesh is under 160k triangles")
+	var counts := {}
+	for part in ["terrain", "near", "far"]:
+		var triangles := 0
+		for chunk in built[part]:
+			triangles += chunk.triangle_count()
+		counts[part] = triangles
+	print("  info  triangles: terrain %d, near props %d, far props %d; %d lamps" % [counts["terrain"], counts["near"], counts["far"], built["lamps"].size()])
+	_check(counts["near"] > 0 and counts["far"] > 0, "models load from assets/models")
+	_check(counts["far"] < counts["near"] / 3, "far-away props are much lighter than close-up ones")
+	_check(counts["terrain"] + counts["far"] < 200000, "whole planet at far detail is under 200k triangles")
 	_check(built["lamps"].size() > 0 and built["lamps"].size() <= 8, "village has 1-8 lamps (Mobile limit is 8 lights per mesh)")
 
 

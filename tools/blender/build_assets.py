@@ -1,0 +1,498 @@
+"""Builds Pocket Orbit's low-poly models in Blender and exports them as .glb.
+
+Run from the repo root:
+
+    blender -b -P tools/blender/build_assets.py -- [asset names...]
+
+With no names, every asset is rebuilt. Each asset is written twice into
+assets/models/: <name>.glb for close up and <name>_lod1.glb, a much simpler
+version drawn when the camera is far away.
+
+How the models follow the art rules in GAME_PLAN.md:
+- Colour comes only from the shared palette. Every face's UVs point at the
+  centre of one swatch; the swatch list is read from src/render/palette.gd.
+- Flat shading with soft gradients: faces are flat-shaded, and ambient
+  occlusion (how hidden each corner is from the sky) is baked into vertex
+  colours, which the game multiplies into the palette colour. That gives the
+  soft darkening in creases and at the ground seen in the concept art,
+  without any lighting cost on the phone.
+- Chunky, rounded shapes: geodesic spheres with a little noise, bevelled
+  boxes, lathed (turned) walls and roofs.
+
+Models are built Z-up in metres with the origin on the ground at the centre.
+Fronts face -Y, which the glTF exporter turns into Godot's +Z.
+"""
+
+import math
+import os
+import re
+import sys
+
+import bmesh
+import bpy
+from mathutils import Matrix, Vector, noise
+from mathutils.bvhtree import BVHTree
+
+REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+OUT_DIR = os.path.join(REPO, "assets", "models")
+PALETTE_SOURCE = os.path.join(REPO, "src", "render", "palette.gd")
+GRID = 16
+GLOW_ROW = 15
+
+
+# --- Palette -------------------------------------------------------------------
+
+def load_palette():
+    """Swatch name -> (u, v) in Blender UV space, mirroring palette.gd."""
+    text = open(PALETTE_SOURCE, encoding="utf-8").read()
+    regular, glow = text.split("const GLOW_COLORS", 1)
+    pattern = re.compile(r'"(\w+)":\s*Color\("[0-9a-fA-F]{6}"\)')
+    cells = {}
+    for i, name in enumerate(pattern.findall(regular)):
+        cells[name] = (i % GRID, i // GRID)
+    for i, name in enumerate(pattern.findall(glow)):
+        cells[name] = (i, GLOW_ROW)
+    # Godot's v runs down from the top; Blender's runs up from the bottom and
+    # the glTF exporter flips it back.
+    return {name: ((x + 0.5) / GRID, 1.0 - (y + 0.5) / GRID) for name, (x, y) in cells.items()}
+
+
+PALETTE = load_palette()
+SWATCHES = list(PALETTE)
+
+
+# --- Building ----------------------------------------------------------------------
+
+def rot(x=0.0, y=0.0, z=0.0):
+    """Rotation matrix from Euler angles in degrees."""
+    return (Matrix.Rotation(math.radians(z), 4, "Z")
+            @ Matrix.Rotation(math.radians(y), 4, "Y")
+            @ Matrix.Rotation(math.radians(x), 4, "X"))
+
+
+def scale(x, y, z):
+    return Matrix.Diagonal((x, y, z, 1.0))
+
+
+def at(x, y, z):
+    return Matrix.Translation((x, y, z))
+
+
+class Builder:
+    """Collects parts into one bmesh, remembering each face's swatch."""
+
+    def __init__(self):
+        self.bm = bmesh.new()
+        self.swatch = self.bm.faces.layers.int.new("swatch")
+
+    def _tag(self, swatch):
+        index = SWATCHES.index(swatch) + 1
+        for face in self.bm.faces:
+            if face[self.swatch] == 0:
+                face[self.swatch] = index
+
+    def _begin(self):
+        """Index where the next part's vertices will start."""
+        return len(self.bm.verts)
+
+    def _end(self, before, swatch, jitter=0.0, seed=0.0, flatten_below=None, smooth=False):
+        """Finish a part: roughen it with noise, flatten its base, tag its
+        swatch. Parts are flat-shaded unless `smooth` is set."""
+        self.bm.verts.ensure_lookup_table()
+        new = self.bm.verts[before:]
+        if smooth:
+            for face in {f for v in new for f in v.link_faces}:
+                face.smooth = True
+        if jitter:
+            offset = Vector((seed * 7.1, seed * 3.3, seed * 5.7))
+            for v in new:
+                v.co += noise.noise_vector(v.co * 1.8 + offset) * jitter
+        if flatten_below is not None:
+            for v in new:
+                v.co.z = max(v.co.z, flatten_below)
+        self._tag(swatch)
+
+    def sphere(self, matrix, radius, swatch, subdivisions=2, jitter=0.0, seed=0.0, flatten_below=None):
+        before = self._begin()
+        bmesh.ops.create_icosphere(self.bm, subdivisions=subdivisions, radius=radius, matrix=matrix)
+        self._end(before, swatch, jitter * radius, seed, flatten_below)
+
+    def cone(self, matrix, r_bottom, r_top, height, segments, swatch, jitter=0.0, seed=0.0):
+        """Cylinder or cone standing on the XY plane of `matrix`."""
+        before = self._begin()
+        bmesh.ops.create_cone(self.bm, cap_ends=True, cap_tris=False, segments=segments,
+                              radius1=r_bottom, radius2=max(r_top, 0.0), depth=height,
+                              matrix=matrix @ at(0, 0, height / 2))
+        self._end(before, swatch, jitter, seed)
+
+    def box(self, matrix, size, swatch, bevel=0.0):
+        """Box centred on `matrix`'s origin; `bevel` rounds its edges."""
+        before = self._begin()
+        bmesh.ops.create_cube(self.bm, size=1.0, matrix=matrix @ scale(*size))
+        if bevel:
+            self.bm.verts.ensure_lookup_table()
+            new_verts = self.bm.verts[before:]
+            edges = list({e for v in new_verts for e in v.link_edges})
+            bmesh.ops.bevel(self.bm, geom=new_verts[:] + edges, offset=bevel, offset_type="OFFSET",
+                            segments=1, profile=0.5, affect="EDGES", clamp_overlap=True)
+        self._end(before, swatch)
+
+    def lathe(self, matrix, profile, segments, swatch, cap_bottom=True, cap_top=True, jitter=0.0, seed=0.0, smooth=False):
+        """Surface of revolution around Z from a list of (radius, z) points,
+        bottom to top. A radius of 0 at an end closes it to a point."""
+        before = self._begin()
+        rings = []
+        for r, z in profile:
+            if r <= 1e-4:
+                rings.append([self.bm.verts.new(matrix @ Vector((0, 0, z)))])
+                continue
+            ring = []
+            for i in range(segments):
+                a = 2 * math.pi * i / segments
+                ring.append(self.bm.verts.new(matrix @ Vector((r * math.cos(a), r * math.sin(a), z))))
+            rings.append(ring)
+        for lower, upper in zip(rings, rings[1:]):
+            for i in range(segments):
+                j = (i + 1) % segments
+                if len(lower) == 1:
+                    self.bm.faces.new((lower[0], upper[j], upper[i]))
+                elif len(upper) == 1:
+                    self.bm.faces.new((lower[i], lower[j], upper[0]))
+                else:
+                    self.bm.faces.new((lower[i], lower[j], upper[j], upper[i]))
+        if cap_bottom and len(rings[0]) > 1:
+            self.bm.faces.new(list(reversed(rings[0])))
+        if cap_top and len(rings[-1]) > 1:
+            self.bm.faces.new(rings[-1])
+        self._end(before, swatch, jitter, seed, smooth=smooth)
+
+    def half_disc(self, matrix, radius, thickness, segments, swatch):
+        """Half a disc hanging below `matrix`'s origin in its XZ plane, with
+        `thickness` along Y. Used for scalloped awning edges."""
+        before = self._begin()
+        front, back = [], []
+        for i in range(segments + 1):
+            a = math.pi * i / segments
+            p = Vector((radius * math.cos(a), 0, -radius * math.sin(a)))
+            front.append(self.bm.verts.new(matrix @ (p + Vector((0, -thickness / 2, 0)))))
+            back.append(self.bm.verts.new(matrix @ (p + Vector((0, thickness / 2, 0)))))
+        self.bm.faces.new(front)
+        self.bm.faces.new(list(reversed(back)))
+        for i in range(segments):
+            self.bm.faces.new((front[i], back[i], back[i + 1], front[i + 1]))
+        self.bm.faces.new((front[-1], back[-1], back[0], front[0]))
+        self._end(before, swatch)
+
+    def flower(self, matrix, size, petal="flower_white", centre="flower_yellow"):
+        """A flat five-sided blossom with a raised centre, in the XY plane of
+        `matrix`. Kept to about 20 triangles since there are many of them."""
+        self.cone(matrix, size, size * 0.85, size * 0.14, 5, petal)
+        self.cone(matrix @ at(0, 0, size * 0.1), size * 0.36, size * 0.2, size * 0.12, 5, centre)
+
+    def leaf(self, matrix, size, swatch="leaf_light"):
+        self.sphere(matrix @ scale(1.0, 0.55, 0.22), size, swatch, 0)
+
+
+# --- Assets ----------------------------------------------------------------------
+# Each takes lod (0 = close up, 1 = far away) and adds parts to a Builder.
+
+def tree_round(b, lod):
+    # Tapered trunk with a flared base, leaning very slightly.
+    b.cone(at(0, 0, 0), 0.52, 0.3, 0.45, 7 if lod == 0 else 5, "trunk_dark")
+    b.cone(at(0, 0, 0.3) @ rot(y=3), 0.34, 0.22, 2.0, 7 if lod == 0 else 5, "trunk")
+    if lod == 0:
+        b.cone(at(0.1, 0, 1.75) @ rot(y=48), 0.14, 0.08, 0.75, 5, "trunk")
+        b.cone(at(-0.08, 0.05, 1.9) @ rot(y=-42, z=20), 0.12, 0.07, 0.6, 5, "trunk")
+    # One big faceted canopy, as in the concept sheet.
+    b.sphere(at(0.06, 0, 3.15) @ scale(1, 1, 0.92), 1.55, "leaf", 2 if lod == 0 else 1, jitter=0.07, seed=1)
+    if lod == 0:
+        for i, (az, el) in enumerate([(20, 10), (95, 35), (160, -5), (230, 25), (300, 0), (340, 45), (60, -20), (200, -25)]):
+            d = Vector((math.cos(math.radians(az)) * math.cos(math.radians(el)),
+                        math.sin(math.radians(az)) * math.cos(math.radians(el)),
+                        math.sin(math.radians(el))))
+            pos = Vector((0.06, 0, 3.15)) + Vector((d.x, d.y, d.z * 0.92)) * 1.5
+            facing = d.to_track_quat("Z", "Y").to_matrix().to_4x4()
+            b.leaf(Matrix.Translation(pos) @ facing @ rot(z=35 * i), 0.26)
+        for az, el in [(-70, 15), (-120, 40), (-30, -10)]:
+            d = Vector((math.cos(math.radians(az)) * math.cos(math.radians(el)),
+                        math.sin(math.radians(az)) * math.cos(math.radians(el)),
+                        math.sin(math.radians(el))))
+            pos = Vector((0.06, 0, 3.15)) + Vector((d.x, d.y, d.z * 0.92)) * 1.52
+            b.flower(Matrix.Translation(pos) @ d.to_track_quat("Z", "Y").to_matrix().to_4x4(), 0.2)
+
+
+def tree_pine(b, lod):
+    segments = 10 if lod == 0 else 6
+    b.cone(at(0, 0, 0), 0.34, 0.22, 1.1, 6 if lod == 0 else 4, "trunk")
+    tiers = [(0.8, 1.45, 1.45), (1.55, 1.12, 1.3), (2.25, 0.8, 1.2)]
+    for i, (z, radius, height) in enumerate(tiers):
+        swatch = "pine" if i < 2 else "pine_light"
+        before = b._begin()
+        b.cone(at(0, 0, z), radius, 0.0, height, segments, swatch)
+        if lod == 0:
+            # Droop every other rim point for the scalloped edge of the concept pine.
+            b.bm.verts.ensure_lookup_table()
+            rim = [v for v in b.bm.verts[before:] if abs(v.co.z - z) < 1e-4 and v.co.xy.length > radius * 0.5]
+            for v in rim:
+                angle = math.atan2(v.co.y, v.co.x)
+                if round(angle / (2 * math.pi / segments)) % 2 == 0:
+                    v.co.z -= 0.2
+                    v.co.xy *= 1.04
+    b.cone(at(0, 0, 3.2), 0.36, 0.0, 0.55, segments, "pine_light")
+
+
+def rock(b, lod):
+    b.sphere(at(0, 0, 0.42) @ scale(1.25, 1.0, 0.8), 0.72, "boulder", 2 if lod == 0 else 1, jitter=0.2, seed=3, flatten_below=0.0)
+    if lod == 0:
+        b.sphere(at(0.85, -0.35, 0.1), 0.3, "rock_dark", 1, jitter=0.25, seed=4, flatten_below=0.0)
+        b.sphere(at(-0.7, -0.5, 0.08), 0.22, "boulder", 1, jitter=0.25, seed=5, flatten_below=0.0)
+        b.leaf(at(0.6, 0.45, 0.2) @ rot(x=60, z=30), 0.22, "leaf")
+        b.leaf(at(0.72, 0.3, 0.18) @ rot(x=70, z=-20), 0.18, "leaf_light")
+
+
+def bush(b, lod):
+    detail = 1
+    b.sphere(at(0, 0, 0.45), 0.55, "leaf_dark", detail, jitter=0.12, seed=6, flatten_below=0.0)
+    b.sphere(at(0.45, 0.15, 0.35), 0.42, "leaf", detail, jitter=0.12, seed=7, flatten_below=0.0)
+    b.sphere(at(-0.4, -0.1, 0.32), 0.4, "leaf", detail, jitter=0.12, seed=8, flatten_below=0.0)
+    if lod == 0:
+        b.flower(at(0.1, -0.45, 0.72) @ rot(x=-50), 0.14)
+        b.flower(at(-0.45, -0.3, 0.6) @ rot(x=-40, y=-30), 0.12, "flower")
+
+
+def lamp_post(b, lod):
+    b.cone(at(0, 0, 0), 0.2, 0.16, 0.18, 6, "lamp_post")
+    b.cone(at(0, 0, 0.18), 0.07, 0.06, 2.0, 6 if lod == 0 else 4, "lamp_post")
+    # Lantern: glowing glass under a little roof.
+    b.box(at(0, 0, 2.3), (0.3, 0.3, 0.36), "lamp_glow", bevel=0.03 if lod == 0 else 0.0)
+    b.cone(at(0, 0, 2.47) @ rot(z=45), 0.28, 0.04, 0.2, 4, "lamp_post")
+    b.cone(at(0, 0, 2.08) @ rot(z=45), 0.2, 0.2, 0.05, 4, "lamp_post")
+    if lod == 0:
+        b.sphere(at(0, 0, 2.7), 0.06, "gold", 1)
+
+
+def market_stall(b, lod):
+    bevel = 0.03 if lod == 0 else 0.0
+    # Counter
+    b.box(at(0, 0, 0.5), (2.4, 0.95, 0.9), "wood", bevel)
+    b.box(at(0, -0.02, 0.98), (2.6, 1.1, 0.1), "wood_light", bevel)
+    if lod == 0:
+        for z in (0.2, 0.5, 0.8):
+            b.box(at(0, -0.49, z), (2.3, 0.06, 0.22), "wood_dark", 0.02)
+        # Draped cloth over the front of the counter.
+        b.box(at(0.35, -0.57, 0.82), (1.1, 0.04, 0.35), "cloth_pink", 0.015)
+    # Posts: taller at the back so the awning slopes forward.
+    for x in (-1.18, 1.18):
+        b.box(at(x, 0.42, 1.35), (0.14, 0.14, 2.7), "wood_dark", bevel)
+        b.box(at(x, -0.48, 1.2), (0.14, 0.14, 2.4), "wood_dark", bevel)
+    # Striped awning sloping down to the front, with a scalloped edge.
+    stripes = 6
+    width = 2.7 / stripes
+    depth = 1.5
+    slope = math.atan2(0.45, 1.3)
+    front_y = -0.15 - depth / 2 * math.cos(slope)
+    front_z = 2.58 - depth / 2 * math.sin(slope)
+    for i in range(stripes):
+        x = -1.35 + width * (i + 0.5)
+        swatch = "awning_red" if i % 2 == 0 else "awning_white"
+        b.box(at(x, -0.15, 2.58) @ rot(x=math.degrees(slope)), (width + 0.005, depth, 0.07), swatch)
+        if lod == 0:
+            b.half_disc(at(x, front_y, front_z + 0.02), width / 2, 0.05, 6, swatch)
+    if lod == 0:
+        # Crates of fruit on the counter.
+        for cx, fruit in ((-0.6, "apple"), (0.25, "orange")):
+            b.box(at(cx, 0.05, 1.18), (0.62, 0.46, 0.3), "wood_light", 0.02)
+            for j in range(6):
+                fx = cx - 0.18 + (j % 3) * 0.18
+                fy = -0.07 + (j // 3) * 0.2
+                b.sphere(at(fx, fy, 1.36), 0.11, fruit, 1)
+        # Flower pot.
+        b.cone(at(0.9, 0.05, 1.03), 0.14, 0.18, 0.25, 8, "terracotta")
+        b.sphere(at(0.9, 0.05, 1.33), 0.2, "leaf", 1, jitter=0.1, seed=9)
+        b.flower(at(0.88, -0.05, 1.47), 0.09)
+        b.flower(at(0.98, 0.1, 1.44) @ rot(y=25), 0.08, "flower")
+        # Hanging star sign.
+        b.cone(at(-0.9, -0.78, 1.95) @ rot(x=90), 0.14, 0.14, 0.04, 5, "gold")
+    b.box(at(1.55, 0.2, 0.25), (0.55, 0.55, 0.5), "wood", bevel)
+
+
+def cottage(b, lod):
+    segments = 16 if lod == 0 else 8
+    # Softly bulging walls.
+    wall = [(1.72 + 0.14 * math.sin(math.pi * t), 2.3 * t) for t in [i / 5 for i in range(6)]]
+    b.lathe(Matrix.Identity(4), wall, segments, "wall_cream", cap_bottom=False, cap_top=False, smooth=True)
+    # Roof: overlapping rows of tiles, each ring a little inside the one below.
+    # Each row's lower edge sits just proud of the row below, like tile courses.
+    rows = [(2.35, 2.05), (1.85, 2.75), (1.25, 3.35), (0.6, 3.85)]
+    if lod == 0:
+        b.lathe(Matrix.Identity(4), [(1.7, 2.12), (2.35, 2.05)], segments, "roof_red_dark", cap_bottom=True, cap_top=False)
+        for i, (r, z) in enumerate(rows):
+            nxt = rows[i + 1] if i + 1 < len(rows) else (0.0, 4.1)
+            profile = [(r, z), (r * 0.99, z + 0.1), (nxt[0] * 1.03, nxt[1] + 0.1)]
+            b.lathe(Matrix.Identity(4), profile, segments, "roof_red",
+                    cap_bottom=False, cap_top=False, smooth=True)
+        b.sphere(at(0, 0, 4.15), 0.16, "roof_red_dark", 1)
+    else:
+        b.lathe(Matrix.Identity(4), [(2.3, 2.05), (0.0, 4.1)], segments, "roof_red")
+    # Chimney.
+    b.box(at(0.95, 0.55, 3.35), (0.5, 0.5, 1.3), "stone_light", 0.04 if lod == 0 else 0.0)
+    b.box(at(0.95, 0.55, 4.05), (0.62, 0.62, 0.14), "stone", 0.03 if lod == 0 else 0.0)
+
+    def on_wall(angle, z, out=0.0):
+        """Matrix on the wall surface at `angle` degrees around from the
+        front (-Y), with local -Y pointing out of the wall."""
+        r = 1.72 + 0.14 * math.sin(math.pi * z / 2.3) + out
+        return rot(z=angle) @ at(0, -r, z)
+
+    # Door: arched, recessed into a wooden frame, with a stone step.
+    b.box(on_wall(0, 0.72, 0.02), (1.02, 0.14, 1.44), "wood_dark", 0.03 if lod == 0 else 0.0)
+    b.cone(on_wall(0, 1.44, -0.05) @ rot(x=90), 0.51, 0.51, 0.14, 12 if lod == 0 else 6, "wood_dark")
+    b.box(on_wall(0, 0.7, 0.07), (0.8, 0.1, 1.36), "wood", 0.02 if lod == 0 else 0.0)
+    b.cone(on_wall(0, 1.38, 0.02) @ rot(x=90), 0.4, 0.4, 0.1, 12 if lod == 0 else 6, "wood")
+    b.box(at(0, -2.05, 0.08), (1.3, 0.55, 0.16), "stone_light", 0.04 if lod == 0 else 0.0)
+    if lod == 0:
+        b.sphere(on_wall(0, 0.8, 0.12) @ at(0.25, 0, 0), 0.06, "gold", 1)
+        b.cone(on_wall(0, 1.25, 0.1) @ rot(x=90), 0.14, 0.14, 0.04, 10, "window_glow")
+        b.box(on_wall(0, 1.25, 0.13), (0.3, 0.04, 0.04), "wood_dark")
+        b.box(on_wall(0, 1.25, 0.13), (0.04, 0.04, 0.3), "wood_dark")
+    # Round glowing windows with frames and flower boxes.
+    for angle in (-58, 58, 180):
+        b.cone(on_wall(angle, 1.35, -0.02) @ rot(x=90), 0.42, 0.42, 0.12, 12 if lod == 0 else 6, "wood")
+        b.cone(on_wall(angle, 1.35, 0.03) @ rot(x=90), 0.32, 0.32, 0.1, 12 if lod == 0 else 6, "window_glow")
+        if lod == 0:
+            b.box(on_wall(angle, 1.35, 0.1), (0.62, 0.05, 0.05), "wood")
+            b.box(on_wall(angle, 1.35, 0.1), (0.05, 0.05, 0.62), "wood")
+            b.box(on_wall(angle, 0.86, 0.14), (0.8, 0.22, 0.2), "wood_dark", 0.02)
+            for k in range(3):
+                b.sphere(on_wall(angle, 1.0, 0.16) @ at(-0.25 + k * 0.25, 0, 0), 0.13, "leaf", 1, jitter=0.1, seed=20 + k)
+            for k in range(2):
+                b.flower(on_wall(angle, 1.08, 0.3) @ at(-0.13 + k * 0.26, 0, 0) @ rot(x=-70), 0.08,
+                         "flower" if k == 1 else "flower_white")
+    # Wall lantern beside the door.
+    b.box(on_wall(-28, 1.75, 0.2), (0.2, 0.2, 0.26), "lamp_glow", 0.02 if lod == 0 else 0.0)
+    b.cone(on_wall(-28, 1.88, 0.2) @ rot(z=45), 0.18, 0.03, 0.14, 4, "lamp_post")
+    if lod == 0:
+        # A ring of foundation stones.
+        for i in range(14):
+            angle = 360 * i / 14 + 8
+            if abs(((angle + 180) % 360) - 180) < 22:
+                continue  # leave the doorway clear
+            b.sphere(rot(z=angle) @ at(0, -1.8, 0.12) @ scale(1.3, 0.8, 0.7), 0.24, "stone" if i % 3 else "stone_light",
+                     0, jitter=0.15, seed=30 + i, flatten_below=0.0)
+
+
+ASSETS = {
+    "tree_round": tree_round,
+    "tree_pine": tree_pine,
+    "rock": rock,
+    "bush": bush,
+    "lamp_post": lamp_post,
+    "market_stall": market_stall,
+    "cottage": cottage,
+}
+
+# How far (metres) ambient occlusion rays look for blockers, per asset.
+AO_REACH = {"cottage": 0.7, "market_stall": 0.9}
+
+
+# --- Baking and export ----------------------------------------------------------
+
+def hemisphere_directions(count):
+    """Evenly spread directions over the +Z hemisphere (Fibonacci spiral)."""
+    dirs = []
+    golden = math.pi * (3 - math.sqrt(5))
+    for i in range(count):
+        z = 1 - (i + 0.5) / count
+        r = math.sqrt(1 - z * z)
+        a = golden * i
+        dirs.append(Vector((r * math.cos(a), r * math.sin(a), z)))
+    return dirs
+
+
+AO_DIRECTIONS = hemisphere_directions(32)
+
+
+def bake_ambient_occlusion(bm, reach):
+    """Per face corner: share of directions above the surface that aren't
+    blocked by the model itself or the ground (z = 0) within `reach` metres."""
+    tree = BVHTree.FromBMesh(bm)
+    values = []
+    for face in bm.faces:
+        n = face.normal
+        basis = n.to_track_quat("Z", "Y").to_matrix()
+        for loop in face.loops:
+            origin = loop.vert.co.lerp(face.calc_center_median(), 0.08) + n * 0.01
+            open_sky = 0.0
+            for local in AO_DIRECTIONS:
+                d = basis @ local
+                if d.z < 0 and origin.z + d.z * reach < 0:
+                    continue  # hits the ground
+                hit = tree.ray_cast(origin, d, reach)
+                if hit[0] is None:
+                    open_sky += 1.0
+            ao = open_sky / len(AO_DIRECTIONS)
+            values.append(0.5 + 0.5 * min(1.0, ao * 1.15))
+    return values
+
+
+def build(name, lod):
+    b = Builder()
+    ASSETS[name](b, lod)
+    bm = b.bm
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    ao = bake_ambient_occlusion(bm, AO_REACH.get(name, 0.9))
+    swatch_of_face = [SWATCHES[f[b.swatch] - 1] for f in bm.faces]
+
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    uv = mesh.uv_layers.new(name="UVMap")
+    color = mesh.color_attributes.new("Col", "FLOAT_COLOR", "CORNER")
+    for poly in mesh.polygons:
+        u, v = PALETTE[swatch_of_face[poly.index]]
+        for li in poly.loop_indices:
+            uv.data[li].uv = (u, v)
+            shade = ao[li]
+            color.data[li].color = (shade, shade, shade, 1.0)
+    mesh.color_attributes.active_color = color
+    if "swatch" in mesh.attributes:
+        mesh.attributes.remove(mesh.attributes["swatch"])
+
+    obj = bpy.data.objects.new(name, mesh)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
+def export(obj, path):
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.export_scene.gltf(
+        filepath=path,
+        export_format="GLB",
+        use_selection=True,
+        export_yup=True,
+        export_normals=True,
+        export_texcoords=True,
+        export_vertex_color="ACTIVE",
+        export_materials="NONE",
+        export_animations=False,
+    )
+
+
+def main():
+    args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
+    names = args or list(ASSETS)
+    os.makedirs(OUT_DIR, exist_ok=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    for name in names:
+        for lod in (0, 1):
+            obj = build(name, lod)
+            path = os.path.join(OUT_DIR, name + ("" if lod == 0 else "_lod1") + ".glb")
+            export(obj, path)
+            print("%-14s lod%d  %5d triangles  -> %s" % (
+                name, lod, sum(len(p.vertices) - 2 for p in obj.data.polygons), os.path.relpath(path, REPO)))
+            bpy.data.objects.remove(obj)
+
+
+main()

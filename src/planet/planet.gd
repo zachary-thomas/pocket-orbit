@@ -13,6 +13,9 @@ const WATER_SHADER := preload("res://shaders/water.gdshader")
 const ATMOSPHERE_SHADER := preload("res://shaders/atmosphere.gdshader")
 ## Tallest thing above sea level (mountain terrace plus a tree), for horizon culling.
 const TALLEST_OBJECT := 12.0
+## Camera distance (metres, to a chunk's centre) where props switch from full
+## detail to their simple far-away versions.
+const DETAIL_DISTANCE := 60.0
 
 @export var frequency := 16
 ## Radius of the level-0 terrace. At the player's 4 m/s, 134 m makes a walk
@@ -29,7 +32,7 @@ var atmosphere_material: ShaderMaterial
 var atmosphere_radius := 0.0
 
 var _content: Node3D
-var _chunks: Array[MeshInstance3D] = []
+var _chunks: Array[Node3D] = []
 var _chunk_dirs := PackedVector3Array()
 var _chunk_radii := PackedFloat32Array()
 
@@ -60,14 +63,19 @@ func generate(world_seed: int) -> void:
 	_chunks.clear()
 	_chunk_dirs = built["chunk_dirs"]
 	_chunk_radii = built["chunk_radii"]
-	var index := 0
-	for md: MeshData in built["chunks"]:
-		var chunk := MeshInstance3D.new()
-		chunk.name = "Chunk%d" % index
-		chunk.mesh = md.to_mesh(surface_material)
+	var terrain: Array[MeshData] = built["terrain"]
+	var near: Array = built["near"]
+	var far: Array[MeshData] = built["far"]
+	for i in terrain.size():
+		var chunk := Node3D.new()
+		chunk.name = "Chunk%d" % i
 		_content.add_child(chunk)
 		_chunks.append(chunk)
-		index += 1
+		_add_chunk_mesh(chunk, "Terrain", terrain[i], 0.0, 0.0)
+		_add_chunk_mesh(chunk, "NearShapes", near[i].shapes, 0.0, DETAIL_DISTANCE)
+		for model: String in near[i].placements:
+			_add_instanced(chunk, model, near[i].placements[model])
+		_add_chunk_mesh(chunk, "Far", far[i], DETAIL_DISTANCE, 0.0)
 	for lamp_position: Vector3 in built["lamps"]:
 		_add_lamp_light(lamp_position)
 	_add_water()
@@ -140,6 +148,40 @@ func tile_center(tile: int) -> Vector3:
 
 
 # --- Visual pieces ---------------------------------------------------------
+
+## A chunk mesh, drawn only between `begin` and `end` metres from the camera
+## (0 = no limit).
+func _add_chunk_mesh(chunk: Node3D, part: String, md: MeshData, begin: float, end: float) -> void:
+	if md.is_empty():
+		return
+	var instance := MeshInstance3D.new()
+	instance.name = part
+	instance.mesh = md.to_mesh(surface_material)
+	instance.visibility_range_begin = begin
+	instance.visibility_range_end = end
+	if begin > 0.0:
+		instance.visibility_range_begin_margin = 5.0
+	if end > 0.0:
+		instance.visibility_range_end_margin = 5.0
+	chunk.add_child(instance)
+
+
+## Full-detail copies of one model, drawn with GPU instancing while the
+## camera is within DETAIL_DISTANCE.
+func _add_instanced(chunk: Node3D, model: String, placements: Array) -> void:
+	var multimesh := MultiMesh.new()
+	multimesh.transform_format = MultiMesh.TRANSFORM_3D
+	multimesh.mesh = PropLibrary.mesh(model, 0, surface_material)
+	multimesh.instance_count = placements.size()
+	for i in placements.size():
+		multimesh.set_instance_transform(i, placements[i])
+	var instance := MultiMeshInstance3D.new()
+	instance.name = model
+	instance.multimesh = multimesh
+	instance.visibility_range_end = DETAIL_DISTANCE
+	instance.visibility_range_end_margin = 5.0
+	chunk.add_child(instance)
+
 
 func _add_lamp_light(at: Vector3) -> void:
 	var light := OmniLight3D.new()

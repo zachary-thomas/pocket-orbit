@@ -6,6 +6,9 @@ extends RefCounted
 ## their own textures: each face's UVs point at the centre of a swatch, so one
 ## material covers everything and changing a colour here recolours the game.
 ##
+## The Blender asset script (tools/blender/build_assets.py) reads the swatch
+## list from this file, so models and the game always agree on the layout.
+##
 ## The bottom row (row 15) holds "glow" swatches. The surface shader makes
 ## those emit light at night, for windows, lamps and shrine crystals.
 
@@ -14,43 +17,60 @@ const SWATCH_PX := 16
 const GLOW_ROW := 15
 
 const COLORS := {
+	# Plain white: terrain and other vertex-coloured meshes point here and
+	# carry their colour per vertex instead.
+	"white": Color("ffffff"),
 	# Terrain tops
-	"grass": Color("8ccf6b"),
-	"tundra": Color("a3c28c"),
-	"jungle": Color("4fa35a"),
-	"sand": Color("ecd49a"),
-	"snow": Color("f2f6fb"),
-	"rock": Color("aaa3ab"),
-	"shallows": Color("e3cf98"),
+	"grass": Color("9dd36a"),
+	"tundra": Color("a8c790"),
+	"jungle": Color("5aad5c"),
+	"sand": Color("efd69c"),
+	"snow": Color("f3f6fb"),
+	"rock": Color("aba4b6"),
+	"shallows": Color("e6d29c"),
 	"seabed": Color("8fb3a8"),
 	# Terrace sides
-	"dirt": Color("b98a5e"),
-	"dirt_dark": Color("7a6048"),
-	"sandstone": Color("d4a46c"),
-	"stone": Color("8f8b91"),
-	"stone_dark": Color("77717e"),
+	"dirt": Color("b58a66"),
+	"dirt_dark": Color("7d6450"),
+	"sandstone": Color("d6a878"),
+	"stone": Color("a39cab"),
+	"stone_dark": Color("857e91"),
 	"ice_cliff": Color("a9d3ea"),
 	"seabed_cliff": Color("7c9a96"),
 	# Plants
-	"trunk": Color("8a5a3c"),
-	"leaf": Color("6fbf5a"),
-	"leaf_dark": Color("4f9a4c"),
-	"pine": Color("3f7d5a"),
+	"trunk": Color("8f5c3c"),
+	"trunk_dark": Color("6e4630"),
+	"leaf": Color("7cc05a"),
+	"leaf_light": Color("9ed36b"),
+	"leaf_dark": Color("5aa04e"),
+	"pine": Color("3f8f64"),
+	"pine_light": Color("56a877"),
 	"palm": Color("7cc26a"),
 	"cactus": Color("6fae5c"),
 	"flower": Color("f59ab5"),
+	"flower_white": Color("fbf6ee"),
+	"flower_yellow": Color("f6cf4a"),
 	# Minerals
-	"boulder": Color("9c97a3"),
+	"boulder": Color("a9a3b5"),
+	"rock_dark": Color("8c8599"),
 	"ice": Color("d6f1fb"),
 	# Village
-	"wood": Color("c08a5a"),
-	"wood_dark": Color("8f623f"),
-	"awning_red": Color("e46a6a"),
-	"awning_white": Color("fff4e6"),
-	"wall_cream": Color("f3e3c3"),
-	"roof_red": Color("d9695b"),
+	"wood": Color("b98357"),
+	"wood_light": Color("d19f6e"),
+	"wood_dark": Color("8a5a3a"),
+	"awning_red": Color("ec7f86"),
+	"awning_white": Color("fff1e2"),
+	"cloth_pink": Color("f2a7b0"),
+	"wall_cream": Color("f6ead6"),
+	"roof_red": Color("e27562"),
+	"roof_red_dark": Color("b95547"),
 	"roof_blue": Color("6e8fd6"),
-	"lamp_post": Color("5b5566"),
+	"stone_light": Color("cfc6cc"),
+	"terracotta": Color("cf8a62"),
+	"apple": Color("e2524a"),
+	"orange": Color("f2a33a"),
+	"gold": Color("e8b64a"),
+	"lamp_post": Color("4c4c6b"),
 	"shrine_stone": Color("c9c3d6"),
 	# Player placeholder
 	"jacket": Color("e9a04b"),
@@ -79,6 +99,12 @@ static func uv(swatch: String) -> Vector2:
 		push_error("Palette: unknown swatch '%s'" % swatch)
 		return Vector2.ZERO
 	return _uv_cache[swatch]
+
+
+## The swatch's colour, converted to linear light for use as a vertex colour.
+static func linear(swatch: String) -> Color:
+	var c: Color = COLORS.get(swatch, GLOW_COLORS.get(swatch, Color.MAGENTA))
+	return c.srgb_to_linear()
 
 
 static func make_texture() -> ImageTexture:
