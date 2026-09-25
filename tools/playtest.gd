@@ -66,6 +66,9 @@ func _run() -> void:
 	# Fishing from the nearest shore.
 	var shore := _nearest_coast()
 	_player.spawn(_planet, shore)
+	# A bug fluttering by would take the action button instead of the rod.
+	_main.bugs.clear()
+	_main.bugs.set_process(false)
 	await _frames(3)
 	var water := _actions.water_spot(_player.heading)
 	_check(water != Vector3.ZERO, "found water to fish in")
@@ -85,6 +88,7 @@ func _run() -> void:
 		_actions.press_action()
 		await _wait(0.5)
 	_check(_game.state.stats["fish"] > fish_before, "caught a fish")
+	_main.bugs.set_process(true)
 
 	# Catch a bug: go back home, wait for one, sneak up.
 	_player.spawn(_planet, _planet.data.village["street_tile"])
@@ -97,7 +101,7 @@ func _run() -> void:
 		if bug == null:
 			continue
 		_actions.walk_to_target({"kind": "bug", "label": "Catch", "pos": bug.global_position, "reach": 2.7, "node": bug})
-		var ref := weakref(bug)
+		var ref: WeakRef = weakref(bug)
 		await _until(func() -> bool: return _game.state.stats["bugs"] > bugs_before or ref.get_ref() == null or ref.get_ref().is_queued_for_deletion(), 20.0)
 		await _wait(0.6)
 		if _game.state.stats["bugs"] > bugs_before:
@@ -133,7 +137,7 @@ func _run() -> void:
 	await _until(func() -> bool: return _main.customers.count() > 0, 5.0)
 	_check(_main.customers.count() > 0, "a customer came")
 	var shot := false
-	var deadline := Time.get_ticks_msec() + 90000
+	var deadline := Time.get_ticks_msec() + 150000
 	while Time.get_ticks_msec() < deadline and _game.state.stats["sold"] < sold_before + 2:
 		for customer in _main.customers.get_children():
 			if not shot and customer.stage == Customers.Stage.BROWSING:

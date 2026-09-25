@@ -7,7 +7,7 @@ extends RefCounted
 ## Each prop is a Dictionary:
 ##   id      stable id, e.g. "t812-1" (tile 812, second attempt); the same
 ##           seed always gives the same ids, so saves can refer to them
-##   model   a PropLibrary model ("tree_round") or a built-in shape ("cactus")
+##   model   a PropLibrary model ("tree_round")
 ##   xf      Transform3D relative to the planet centre
 ##   tile    tile it stands on
 ##   radius  collision radius in metres (0 = walk through)
@@ -17,8 +17,6 @@ extends RefCounted
 
 ## Rings of tiles around home kept clear of wild plants for the village.
 const VILLAGE_CLEAR_RINGS := 2
-## Models drawn with built-in shapes instead of Blender models.
-const SHAPES := ["cactus", "jungle_tree", "ice_spire", "shrine"]
 
 const RADIUS := {
 	"tree_round": 0.5, "tree_pine": 0.55, "rock": 0.85, "bush": 0.55, "cactus": 0.45,

@@ -89,7 +89,12 @@ func _ready() -> void:
 	for arg in args:
 		for tool: String in ["tour", "playtest"]:
 			if arg.begins_with("--%s=" % tool):
-				var script: Node = load("res://tools/%s.gd" % ("screenshot_tour" if tool == "tour" else tool)).new()
+				var source: GDScript = load("res://tools/%s.gd" % ("screenshot_tour" if tool == "tour" else tool))
+				if source == null or not source.can_instantiate():
+					push_error("Couldn't load the %s script." % tool)
+					get_tree().quit(1)
+					return
+				var script: Node = source.new()
 				script.set("output_dir", arg.trim_prefix("--%s=" % tool))
 				add_child(script)
 
@@ -101,6 +106,7 @@ func start(world_seed: int, saved: GameState) -> void:
 	planet.generate(world_seed)
 	clouds.build(planet, world_seed)
 	player.build_visual(planet.surface_material)
+	planet.focus = player
 	sky.setup(planet, player)
 	game.start(planet, sky, player, saved)
 	var material := planet.surface_material

@@ -368,7 +368,8 @@ Phase 0 set the art style: Blender-scripted models matched to the concept art (s
 
 | When | Polish |
 | --- | --- |
-| With Phase 1 | Rigged player character from the turnaround sheets (walk, idle, tool animations). Trees and props fade when they block the camera. Real models for cactus, jungle tree, ice spire and shrines. Ground detail: grass tufts, flowers, stepping-stone paths, fences. Rounder terrace edges so the hex grid stops showing from orbit. |
+| With Phase 1 (done) | Player character from the turnaround sheet (goggles, patched jacket, scarf, backpack with bedroll), with swinging arms and legs. Close-up props dissolve where they block the camera's view of the player. Real models for cactus, palm, ice spire and shrines. Ground detail: grass tufts, flowers, pebbles, stepping-stone paths between village buildings. |
+| With Phase 2 (carried over) | Fences. Rounder terrace edges so the hex grid stops showing from orbit. |
 | With Phase 2 | Villager species and new buildings (general shop, Archive, landing pad) in the same style. Waterfalls where rivers drop off terraces, shore foam, tide pools. Rain, snow, fireflies, falling leaves. |
 | Before release | A side-by-side pass of every model against its concept (colour, bevels, proportions). Soft outline on characters, bloom tuning. Profiling on a mid-range phone, then tuning detail distances and triangle budgets. Final UI built from the UI mockups. |
 

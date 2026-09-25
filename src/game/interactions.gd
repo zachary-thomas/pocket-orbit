@@ -298,16 +298,34 @@ func walk_to_target(target: Dictionary) -> void:
 		perform(target)
 		return
 	_pending = target
-	if not walk_to(target["pos"]):
-		_pending = {}
+	if walk_to(target["pos"], true):
+		return
+	# Something up on a terrace or on a blocked tile: get as close as we can,
+	# to the reachable neighbouring tile nearest to it, and allow a longer
+	# reach from there (a good stretch, or knocking things down from below).
+	target["reach"] = maxf(target["reach"], 4.2)
+	var planet := game.planet
+	var tile := planet.find_tile_dir(planet.up_at(target["pos"]), game.player.tile)
+	var around := Array(planet.data.sphere.neighbors(tile))
+	var local: Vector3 = target["pos"] - planet.global_position
+	around.sort_custom(func(a: int, b: int) -> bool:
+		return planet.data.sphere.centers[a].distance_to(local.normalized()) < planet.data.sphere.centers[b].distance_to(local.normalized()))
+	for n: int in around:
+		# Just inside the neighbour, at its edge with the target's tile.
+		var edge := planet.data.sphere.centers[n].lerp(planet.data.sphere.centers[tile], 0.42).normalized()
+		if not planet.data.is_water(n) and walk_to(planet.global_position + edge * planet.ground_radius(n), true):
+			return
+	_pending = {}
+	game.toast.emit("Can't get there from here.")
 
 
 ## Starts walking to a world position. False if there's no way there.
-func walk_to(world_position: Vector3) -> bool:
+func walk_to(world_position: Vector3, quiet := false) -> bool:
 	var player := game.player
 	var points := game.graph.route(player.tile, game.planet.up_at(world_position))
 	if points.is_empty():
-		game.toast.emit("Can't get there from here.")
+		if not quiet:
+			game.toast.emit("Can't get there from here.")
 		return false
 	if fishing.is_active():
 		fishing.stop()
@@ -333,6 +351,8 @@ func _update_pending() -> void:
 		return
 	if player.has_route():
 		return
+	if target["kind"] not in ["water_tap", "bug"]:
+		game.toast.emit("Can't reach it from here.")
 	_pending = {}
 	if target["kind"] == "water_tap":
 		var toward := SphereMath.tangent(target["pos"] - player.global_position, player.get_up())

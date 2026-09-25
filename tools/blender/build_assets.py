@@ -434,6 +434,99 @@ def cargo_pod(b, lod):
         b.flower(at(-0.85, -radius - 0.45, 0.58) @ rot(x=-40), 0.1, "flower")
 
 
+def cactus(b, lod):
+    """Saguaro: a ribbed column with two raised arms and a pink flower on top."""
+    if lod == 1:
+        b.cone(at(0, 0, 0), 0.34, 0.24, 2.1, 5, "cactus")
+        b.cone(at(0.1, 0, 0.8) @ rot(y=90), 0.16, 0.14, 0.55, 4, "cactus")
+        b.cone(at(0.65, 0, 0.68), 0.15, 0.1, 0.85, 4, "cactus")
+        b.cone(at(-0.1, 0, 1.15) @ rot(y=-90), 0.15, 0.13, 0.45, 4, "cactus")
+        b.cone(at(-0.55, 0, 1.03), 0.14, 0.1, 0.7, 4, "cactus")
+        return
+    seg = 8 if lod == 0 else 5
+    prof = [(0.34, 0.0), (0.33, 1.2), (0.3, 1.85), (0.2, 2.05), (0.0, 2.12)]
+    b.lathe(at(0, 0, 0), prof, seg, "cactus", cap_top=False)
+    for side, h, reach, up in [(1, 0.8, 0.55, 0.7), (-1, 1.15, 0.45, 0.55)]:
+        # Elbow out sideways, then up.
+        b.cone(at(0.1 * side, 0, h) @ rot(y=90 * side), 0.17, 0.15, reach, seg if lod == 0 else 4, "cactus")
+        arm = [(0.16, 0.0), (0.15, up), (0.1, up + 0.13), (0.0, up + 0.17)]
+        b.lathe(at((0.1 + reach) * side, 0, h - 0.12), arm, seg if lod == 0 else 4, "cactus", cap_top=False)
+    if lod == 0:
+        # Pale ribs down the main column.
+        for i in range(4):
+            a = math.radians(45 + 90 * i)
+            b.box(at(math.cos(a) * 0.32, math.sin(a) * 0.32, 1.0) @ rot(z=45 + 90 * i), (0.05, 0.05, 1.7), "leaf_light")
+        b.flower(at(0, 0, 2.08), 0.2, "flower", "flower_yellow")
+        b.sphere(at(0.55, -0.05, 1.5), 0.08, "flower", 0)
+
+
+def jungle_tree(b, lod):
+    """Palm: a curved ringed trunk, big drooping fronds and coconuts."""
+    seg = 6 if lod == 0 else 4
+    pieces = 6 if lod == 0 else 3
+    top = Vector((0, 0, 0))
+    lean = 0.0
+    for i in range(pieces):
+        length = 3.4 / pieces
+        r = 0.26 - 0.1 * i / pieces
+        b.cone(Matrix.Translation(top) @ rot(y=lean), r, r * 0.86, length, seg, "trunk" if i % 2 == 0 else "trunk_dark")
+        top = top + Vector((math.sin(math.radians(lean)), 0, math.cos(math.radians(lean)))) * length
+        lean += 4.0
+    crown = top
+    fronds = 7 if lod == 0 else 5
+    for i in range(fronds):
+        az = 360 * i / fronds + 15
+        swatch = "palm" if i % 2 == 0 else "leaf_dark"
+        # Each frond: two leaf blobs, the outer one drooping lower.
+        d = Vector((math.cos(math.radians(az)), math.sin(math.radians(az)), 0))
+        inner = crown + d * 0.7 + Vector((0, 0, 0.12))
+        outer = crown + d * 1.55 + Vector((0, 0, -0.35))
+        if lod == 1:
+            # A flat three-sided wedge per frond is enough from afar.
+            b.cone(Matrix.Translation(crown) @ rot(z=az) @ rot(y=100) @ scale(0.15, 0.6, 1.0), 1.0, 0.0, 1.9, 3, swatch)
+            continue
+        b.sphere(Matrix.Translation(inner) @ rot(z=az) @ rot(y=12) @ scale(1.0, 0.42, 0.14), 0.85, swatch, 1)
+        b.sphere(Matrix.Translation(outer) @ rot(z=az) @ rot(y=38) @ scale(1.0, 0.36, 0.12), 0.7, swatch, 1)
+    if lod == 0:
+        for i in range(3):
+            a = math.radians(120 * i + 40)
+            b.sphere(Matrix.Translation(crown + Vector((math.cos(a) * 0.22, math.sin(a) * 0.22, -0.2))), 0.15, "trunk_dark", 1)
+        b.sphere(Matrix.Translation(crown + Vector((0, 0, 0.05))), 0.28, "palm", 1)
+
+
+def ice_spire(b, lod):
+    """A cluster of faceted blue crystals with snow on their shoulders."""
+    crystals = [(0, 0, 0.55, 2.7, 0, 0), (0.55, 0.2, 0.34, 1.6, 18, 40), (-0.45, 0.3, 0.3, 1.3, -20, 150),
+                (0.1, -0.5, 0.26, 1.0, 22, -80)]
+    if lod == 1:
+        crystals = crystals[:2]
+    for i, (x, y, r, h, tilt, az) in enumerate(crystals):
+        m = at(x, y, -0.05) @ rot(z=az) @ rot(y=tilt)
+        body = [(r, 0.0), (r * 1.05, h * 0.62), (0.0, h)]
+        b.lathe(m, body, 5 if lod == 0 else 4, "ice" if i % 2 == 0 else "ice_cliff", cap_bottom=True)
+        if lod == 0:
+            # Snow cap on the shoulder of each crystal.
+            b.lathe(m @ at(0, 0, h * 0.58), [(r * 1.12, 0.0), (r * 0.8, h * 0.12), (0.0, h * 0.18)], 5, "snow")
+    b.sphere(at(0, 0, 0.0) @ scale(1.4, 1.2, 0.35), 0.75, "snow", 1, jitter=0.1, seed=12, flatten_below=0.0)
+
+
+def shrine(b, lod):
+    """Ancient stone shrine on a pentagon: stepped base, pillar, floating crystal."""
+    b.cone(at(0, 0, 0), 1.4, 1.25, 0.3, 5, "shrine_stone")
+    b.cone(at(0, 0, 0.3), 1.0, 0.9, 0.25, 5, "stone_light")
+    b.cone(at(0, 0, 0.55), 0.42, 0.32, 1.9, 5, "shrine_stone")
+    b.cone(at(0, 0, 2.45), 0.5, 0.42, 0.15, 5, "stone_light")
+    # The glowing crystal floats above the pillar.
+    b.lathe(at(0, 0, 2.75), [(0.0, 0.0), (0.32, 0.4), (0.0, 1.05)], 5, "shrine_glow")
+    if lod == 0:
+        for i in range(5):
+            a = math.radians(72 * i + 36)
+            p = Vector((math.cos(a) * 1.05, math.sin(a) * 1.05, 0.3))
+            b.cone(Matrix.Translation(p), 0.12, 0.1, 0.55, 5, "shrine_stone")
+            b.sphere(Matrix.Translation(p + Vector((0, 0, 0.62))), 0.09, "shrine_glow", 0)
+            b.leaf(Matrix.Translation(p * 1.15 + Vector((0, 0, -0.2))) @ rot(x=60, z=72 * i), 0.2, "leaf")
+
+
 ASSETS = {
     "tree_round": tree_round,
     "tree_pine": tree_pine,
@@ -443,6 +536,10 @@ ASSETS = {
     "market_stall": market_stall,
     "cottage": cottage,
     "cargo_pod": cargo_pod,
+    "cactus": cactus,
+    "jungle_tree": jungle_tree,
+    "ice_spire": ice_spire,
+    "shrine": shrine,
 }
 
 # How far (metres) ambient occlusion rays look for blockers, per asset.

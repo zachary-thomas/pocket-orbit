@@ -9,7 +9,8 @@ extends RefCounted
 ## - a terrain mesh
 ## - near props: where each full-detail model stands, drawn with GPU
 ##   instancing when the camera is close (one copy of each model in memory,
-##   one draw call per model per chunk), plus a small mesh of primitive shapes
+##   one draw call per model per chunk), plus a mesh of small ground detail
+##   (grass tufts, flowers, pebbles, stepping stones)
 ## - far props: the simple (lod1) version of every prop merged into one mesh,
 ##   drawn otherwise
 ##
@@ -58,10 +59,12 @@ static func build(data: PlanetData) -> Dictionary:
 		for corner in sphere.tile_corners(t):
 			chunk_radii[chunk] = maxf(chunk_radii[chunk], chunk_dirs[chunk].angle_to(corner))
 		_add_tile(terrain[chunk], data, t, top_colors)
+		_add_ground_detail(near[chunk].shapes, data, t)
 
 	for prop: Dictionary in data.props:
 		var chunk := chunk_of[prop["tile"]]
 		add_prop(near[chunk], far[chunk], prop["model"], prop["xf"])
+	_add_paths(near, chunk_of, data)
 
 	return {
 		"terrain": terrain, "near": near, "far": far,
@@ -242,7 +245,7 @@ static func _top_swatch(data: PlanetData, t: int) -> String:
 
 
 ## Close-up props for one chunk: model placements (drawn instanced) and a
-## mesh for primitive shapes that have no Blender model yet.
+## mesh of small ground detail.
 class Props:
 	var placements := {}  # model name -> Array of Transform3D
 	var shapes := MeshData.new()
@@ -259,35 +262,93 @@ class Props:
 		return total
 
 
-## A prop: a PropLibrary model is placed for instancing close up and merged
-## into `far` as its simple version; a built-in shape goes into both.
+## A prop: its full model is placed for instancing close up and its simple
+## version is merged into `far`.
 static func add_prop(near: Props, far: MeshData, model: String, xf: Transform3D) -> void:
-	if model in PropPlacer.SHAPES:
-		add_shape(near.shapes, model, xf)
-		add_shape(far, model, xf)
-		return
 	near.place(model, xf)
 	far.add_arrays(xf, PropLibrary.arrays(model, 1))
 
 
-# --- Built-in shapes ----------------------------------------------------------
-# Props that don't have a Blender model yet (see the polish backlog).
+# --- Ground detail -------------------------------------------------------------
+# Little things that make the ground read as alive up close: tufts of grass
+# and flowers on meadows, pebbles in deserts, and stepping stones between
+# the village buildings. Drawn only near the camera, merged per chunk.
 
-static func add_shape(md: MeshData, model: String, xf: Transform3D) -> void:
-	match model:
-		"cactus":
-			var uv := Palette.uv("cactus")
-			md.add_prism(xf, 0.32, 0.28, 1.9, 6, uv)
-			md.add_box(xf.translated_local(Vector3(0.42, 0.9, 0)), Vector3(0.5, 0.22, 0.22), uv)
-			md.add_prism(xf.translated_local(Vector3(0.62, 0.9, 0)), 0.14, 0.12, 0.6, 5, uv)
-		"jungle_tree":
-			md.add_prism(xf, 0.24, 0.16, 3.2, 5, Palette.uv("trunk"))
-			md.add_blob(xf.translated_local(Vector3(0, 3.4, 0)), Vector3(1.9, 0.7, 1.9), Palette.uv("leaf_dark"), 0)
-			md.add_blob(xf.translated_local(Vector3(0.3, 3.9, 0.2)), Vector3(1.2, 0.6, 1.2), Palette.uv("palm"), 0)
-		"ice_spire":
-			md.add_prism(xf, 0.6, 0.0, 2.6, 5, Palette.uv("ice"))
-			md.add_prism(xf.translated_local(Vector3(0.6, 0, 0.2)), 0.35, 0.0, 1.4, 5, Palette.uv("ice"))
-		"shrine":
-			md.add_prism(xf, 1.4, 1.2, 0.35, 5, Palette.uv("shrine_stone"))
-			md.add_prism(xf.translated_local(Vector3(0, 0.35, 0)), 0.45, 0.32, 2.3, 5, Palette.uv("shrine_stone"))
-			md.add_blob(xf.translated_local(Vector3(0, 3.0, 0)), Vector3(0.45, 0.6, 0.45), Palette.uv("shrine_glow"), 0)
+## Tufts, flowers and pebbles per tile, by biome.
+const DETAIL_COUNT := [0, 5, 9, 3, 0, 10, 1]
+const FLOWER_SWATCHES := ["flower", "flower_white", "flower_yellow"]
+
+
+static func _add_ground_detail(md: MeshData, data: PlanetData, t: int) -> void:
+	if data.is_water(t):
+		return
+	var biome := data.biome[t]
+	var count: int = DETAIL_COUNT[biome]
+	if biome == Biome.MOUNTAIN and data.level[t] >= PlanetGenerator.MAX_LEVEL:
+		count = 0
+	if count == 0:
+		return
+	var rng := PropPlacer.tile_rng(data, t, 11)
+	var sand := _top_swatch(data, t) == "sand"
+	for i in count:
+		var xf := PropPlacer.scatter_transform(data, t, rng, 0.9)
+		var roll := rng.randf()
+		if biome == Biome.DESERT or biome == Biome.MOUNTAIN or sand:
+			_add_pebbles(md, xf, rng, "rock_dark" if biome == Biome.MOUNTAIN else "sandstone")
+		elif biome == Biome.TUNDRA:
+			_add_tuft(md, xf, rng, "pine", 0.35)
+		elif roll < 0.3:
+			_add_flower(md, xf, rng)
+		else:
+			_add_tuft(md, xf, rng, "pine" if biome == Biome.JUNGLE else "leaf", 0.45)
+
+
+## A few thin blades leaning outward.
+static func _add_tuft(md: MeshData, xf: Transform3D, rng: RandomNumberGenerator, swatch: String, height: float) -> void:
+	var uv := Palette.uv(swatch)
+	md.tint = Color.WHITE.lerp(Color(0.85, 0.95, 0.8), rng.randf())
+	for k in 4:
+		var angle := TAU * k / 4.0 + rng.randf() * 0.6
+		var blade := xf.rotated_local(Vector3.UP, angle).translated_local(Vector3(0.06, 0, 0)).rotated_local(Vector3.BACK, -0.35 - rng.randf() * 0.3)
+		md.add_prism(blade, 0.06, 0.0, height * rng.randf_range(0.7, 1.2), 3, uv)
+	md.tint = Color.WHITE
+
+
+## A small flower on a stalk, with a couple of leaves.
+static func _add_flower(md: MeshData, xf: Transform3D, rng: RandomNumberGenerator) -> void:
+	var height := rng.randf_range(0.2, 0.34)
+	md.add_prism(xf, 0.02, 0.015, height, 3, Palette.uv("leaf_dark"))
+	md.add_blob(xf.translated_local(Vector3(0.06, 0.03, 0)), Vector3(0.08, 0.02, 0.04), Palette.uv("leaf"))
+	var head := xf.translated_local(Vector3(0, height, 0))
+	md.add_prism(head, 0.09, 0.07, 0.03, 5, Palette.uv(FLOWER_SWATCHES[rng.randi() % FLOWER_SWATCHES.size()]))
+	md.add_prism(head.translated_local(Vector3(0, 0.02, 0)), 0.035, 0.02, 0.03, 5, Palette.uv("flower_yellow"))
+
+
+static func _add_pebbles(md: MeshData, xf: Transform3D, rng: RandomNumberGenerator, swatch: String) -> void:
+	for k in rng.randi_range(1, 3):
+		var at := xf.rotated_local(Vector3.UP, rng.randf() * TAU).translated_local(Vector3(rng.randf() * 0.3, 0, 0))
+		var size := rng.randf_range(0.06, 0.14)
+		md.add_blob(at, Vector3(size * 1.3, size * 0.6, size), Palette.uv(swatch))
+
+
+## Stepping stones from the front of the stall to each building's door.
+static func _add_paths(near: Array[Props], chunk_of: PackedInt32Array, data: PlanetData) -> void:
+	if data.village.is_empty():
+		return
+	var from: Vector3 = data.village["stall_front"]
+	for prop: Dictionary in data.props:
+		if prop["model"] not in ["cargo_pod", "cottage"]:
+			continue
+		var door: Vector3 = (prop["xf"] as Transform3D) * Vector3(0, 0, 2.6)
+		var rng := PropPlacer.tile_rng(data, prop["tile"], 12)
+		var length := from.distance_to(door)
+		var steps := int(length / 0.75)
+		for i in range(1, steps):
+			var p := from.lerp(door, float(i) / steps)
+			var up := p.normalized()
+			var tile := data.sphere.find_tile(up, prop["tile"])
+			var r := data.top_radius(tile)
+			var side := SphereMath.tangent(door - from, up).cross(up).normalized() * sin(i * 1.7) * 0.15
+			var at := Transform3D(SphereMath.basis_from_up(up, rng.randf() * TAU), (up * r + side).normalized() * r)
+			var size := rng.randf_range(0.17, 0.23)
+			near[chunk_of[tile]].shapes.add_blob(at, Vector3(size * 1.2, 0.04, size), Palette.uv("stone"))

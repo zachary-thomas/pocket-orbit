@@ -72,14 +72,23 @@ const COLORS := {
 	"gold": Color("e8b64a"),
 	"lamp_post": Color("4c4c6b"),
 	"shrine_stone": Color("c9c3d6"),
-	# Player placeholder
-	"jacket": Color("e9a04b"),
-	"skin": Color("f2c7a0"),
-	"pants": Color("4d6aa3"),
-	"scarf": Color("d9534f"),
-	"hair": Color("6b4a35"),
+	# Player
+	"jacket": Color("9c6b47"),
+	"skin": Color("f6d2b4"),
+	"pants": Color("7d8c62"),
+	"scarf": Color("d9686a"),
+	"hair": Color("8a5a3f"),
 	# Sky
 	"cloud": Color("ffffff"),
+	# Player details (added at the end so existing swatches keep their cells)
+	"cuff": Color("efdcbc"),
+	"boots": Color("7a4a33"),
+	"goggle_rim": Color("e3b56c"),
+	"goggle_lens": Color("6f86a8"),
+	"eye": Color("3b2a24"),
+	"blush": Color("f3a0a0"),
+	"bedroll": Color("8aa06a"),
+	"bag": Color("a8744c"),
 }
 
 const GLOW_COLORS := {
