@@ -7,7 +7,7 @@ extends SceneTree
 ##
 ## --focus frames one model close up instead of the whole row.
 
-const MODELS := ["tree_round", "tree_pine", "bush", "rock", "lamp_post", "market_stall", "cottage"]
+const MODELS := ["tree_round", "tree_pine", "bush", "rock", "lamp_post", "market_stall", "cottage", "cargo_pod"]
 const SPACING := [0.0, 4.2, 3.6, 2.6, 2.4, 3.2, 4.4]
 
 

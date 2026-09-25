@@ -1,8 +1,8 @@
 class_name DebugHud
 extends CanvasLayer
-## Look-test tools: FPS and triangle count, local time and tile info, a time
-## scrubber and clock speeds, orbit view, and regenerating with a new seed.
-## Plain Godot controls; the real game UI comes later.
+## Developer tools, hidden until F1: FPS and triangle count, local time and
+## tile info, a time scrubber and clock speeds, orbit view, and starting a
+## new game on another seed. Plain Godot controls.
 
 signal regenerate_requested(world_seed: int)
 
@@ -10,7 +10,6 @@ var sky: SkySystem
 var player: Player
 var camera: PlanetCamera
 var planet: Planet
-var joystick: TouchStick
 
 var _panel: PanelContainer
 var _info: Label
@@ -28,6 +27,7 @@ func _ready() -> void:
 	_panel.offset_top = 16.0
 	_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_panel.add_to_group("ui_blocker")
+	_panel.visible = false
 	add_child(_panel)
 
 	var box := VBoxContainer.new()
@@ -60,22 +60,13 @@ func _ready() -> void:
 	_seed_box.max_value = 999999
 	_seed_box.prefix = "Seed"
 	world_row.add_child(_seed_box)
-	_add_button(world_row, "Regenerate", func() -> void: regenerate_requested.emit(int(_seed_box.value)))
+	_add_button(world_row, "New game", func() -> void: regenerate_requested.emit(int(_seed_box.value)))
 
 	var help := Label.new()
-	help.text = "WASD / stick: walk   Shift: run   Space: jump\nRight-drag or drag: camera   Wheel: zoom   Q/E: turn\nTab: orbit view   [ ]: -/+ 1 hour   F1: hide panel"
+	help.text = "WASD / stick / tap: walk   Shift: run   Space: jump   E: act\nI or B: backpack   Right-drag or drag: camera   Wheel: zoom\nZ/C: turn camera   Tab: orbit view   [ ]: -/+ 1 hour   F1: hide"
 	help.add_theme_font_size_override("font_size", 12)
 	help.modulate = Color(1, 1, 1, 0.7)
 	box.add_child(help)
-
-	joystick = TouchStick.new()
-	joystick.anchor_top = 1.0
-	joystick.anchor_bottom = 1.0
-	joystick.offset_left = 40.0
-	joystick.offset_right = 40.0 + joystick.radius * 2.0
-	joystick.offset_top = -40.0 - joystick.radius * 2.0
-	joystick.offset_bottom = -40.0
-	add_child(joystick)
 
 
 func set_seed(world_seed: int) -> void:

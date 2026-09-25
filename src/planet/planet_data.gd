@@ -23,6 +23,12 @@ var temperature := PackedFloat32Array()
 var moisture := PackedFloat32Array()
 ## Where the village starts and the player spawns.
 var home_tile := -1
+## Every prop (see PropPlacer), and the same props grouped by tile.
+var props: Array[Dictionary] = []
+var props_by_tile := {}
+## Village layout: stall, Vessa's spot, the player's home door and more
+## (see PropPlacer._add_village).
+var village := {}
 
 
 func tile_count() -> int:
@@ -47,6 +53,14 @@ func is_coast(tile: int) -> bool:
 
 
 ## Tiles within `rings` steps of `tile` (including it), mapped to their ring.
+## Props on this tile and its neighbours (for collisions and interaction).
+func props_near(tile: int) -> Array:
+	var found: Array = props_by_tile.get(tile, []).duplicate()
+	for n in sphere.neighbors(tile):
+		found.append_array(props_by_tile.get(n, []))
+	return found
+
+
 func tiles_within(tile: int, rings: int) -> Dictionary:
 	var found := {tile: 0}
 	var frontier: Array[int] = [tile]

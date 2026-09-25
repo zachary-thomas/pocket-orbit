@@ -38,6 +38,7 @@ static func generate(world_seed: int, frequency: int = 16, radius: float = 134.0
 	_choose_home(data)
 	_flatten_village(data)
 	_assign_climate(data)
+	PropPlacer.place(data)
 	return data
 
 

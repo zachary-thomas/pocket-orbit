@@ -12,19 +12,35 @@ Open the folder in Godot 4.7 and press **Play** (F5). Or from a terminal:
 godot --path .
 ```
 
-### Controls (look test)
+### Playing
+
+You've just arrived on Little Haven owing Vessa, the smuggler who got you here, 8,000 Stardust. Gather things, put them on your market stall's four shelves, set prices, and pay her back from what travellers buy.
+
+- **Fish** from the shore: cast, wait for the bobber to dip, then press the action button. Colder seas and night time have different fish.
+- **Bugs** flutter around. Walk (don't run) up to one and swing the net.
+- **Trees and rocks**: shake a fruit tree once a day, chop wood, mine rocks for minerals.
+- **The stall**: stock shelves from your backpack and set each price with the slider. Customers compare it with what the item is worth today (see the demand board). Fair prices build reputation, which brings more customers.
+- **Vessa** stands by the stall: talk to her to pay down your debt or get tips. Your cargo-pod home has a storage chest.
+
+The game saves by itself (every 45 seconds when something changed, and on quit) to `user://save.json`. Start over with `-- --new-game`.
+
+### Controls
 
 | Input | Action |
 | --- | --- |
+| Tap / click the ground | Walk there (tap a tree, bug, the stall or Vessa to walk up and use it) |
 | WASD / arrows, or the on-screen stick | Walk |
 | Shift / Space | Run / jump |
-| Right-drag (or left-drag / touch-drag) | Turn and tilt the camera |
-| Mouse wheel / Q, E | Zoom / turn the camera |
+| E (or the big button) | Action: fish, catch, chop, mine, shop, talk |
+| I / B (or the Bag button) | Backpack |
+| Right-drag (or touch-drag) | Turn and tilt the camera |
+| Mouse wheel / Z, C | Zoom / turn the camera |
 | Tab | Orbit view |
+| Esc | Close a menu |
+| F1 | Developer panel: FPS, time controls, new game on another seed |
 | `[` `]` | Time back / forward one hour |
-| F1 | Hide the debug panel |
 
-The debug panel (top right) shows FPS and triangles on screen, local time and the current tile. It also has a time-of-day slider, clock speeds, and a seed box to regenerate the planet. The sun follows your real clock until you touch the time controls. **Real** switches back to it.
+The sun follows your real clock. The developer panel's time slider and speeds (x60 and up) switch to a simulated clock; a fast clock also moves the days on (new demand, trees to harvest again). **Real** switches back.
 
 ## Checks
 
@@ -33,7 +49,13 @@ godot --headless --import                        # once, so Godot registers the 
 godot --headless --script res://tests/run_tests.gd
 ```
 
-The tests cover the hex sphere (2,562 tiles, 12 pentagons, shared edges), tile lookup, generator determinism and biomes, mesh size, and walking rules.
+The tests cover the hex sphere (2,562 tiles, 12 pentagons, shared edges), tile lookup, generator determinism and biomes, mesh size, walking rules, items and inventory, the economy, every command, saving and loading, pathfinding and props, and how customers decide.
+
+To play through the whole Phase 1 loop automatically (meet Vessa, gather, fish, catch a bug, stock the stall, sell, pay the debt), with screenshots and a report:
+
+```sh
+godot --path . -- --playtest=/some/folder
+```
 
 To save a set of screenshots at different times of day (and a walk over the north pole), run:
 
@@ -43,7 +65,7 @@ godot --path . -- --tour=/some/folder
 
 ## Models
 
-Trees, rocks, bushes, the market stall, the cottage and the lamp post are built by a Blender script and exported to `assets/models/` (stored with Git LFS):
+Trees, rocks, bushes, the market stall, the cottage, the cargo-pod home and the lamp post are built by a Blender script and exported to `assets/models/` (stored with Git LFS):
 
 ```sh
 blender -b -P tools/blender/build_assets.py              # all models
@@ -59,15 +81,18 @@ godot --path . --script res://tools/model_gallery.gd -- --out=gallery.png [--foc
 ## Layout
 
 ```
-src/planet/   HexSphere, PlanetGenerator, PlanetData, PlanetMesher, Planet
-src/actors/   GravityBody (walking on a sphere), Player
+data/         items.json (every fish, bug, mineral, material and fruit)
+src/planet/   HexSphere, PlanetGenerator, PlanetData, PropPlacer, PlanetMesher, Planet, TileGraph
+src/game/     rules: GameState, Commands, Economy, ItemDatabase, Inventory, CatchTables, SaveSystem
+              in the world: Game, Interactions, Fishing, BugSwarm, Customers, WorldItems
+src/actors/   GravityBody (walking on a sphere, routes), Player, Npc (customers, Vessa)
 src/camera/   PlanetCamera (tangent-frame third-person camera, orbit view)
 src/sky/      SkySystem (clock, sun, space sky), CloudLayer
-src/render/   Palette (the shared palette texture), MeshData (mesh building), PropLibrary (loads models)
-src/ui/       DebugHud, TouchStick
+src/render/   Palette (the shared palette texture), MeshData (mesh building), PropLibrary (loads models), ItemMeshes
+src/ui/       GameHud and its menus (backpack, stall, storage, Vessa), UiTheme, ItemIcon, DebugHud, TouchStick
 shaders/      planet surface, water, atmosphere, space sky
 tests/        headless checks
-tools/        screenshot tour, model gallery, blender/ (model build script)
+tools/        screenshot tour, playtest, model gallery, blender/ (model build script)
 ```
 
 Concept art lives in `images art direction/` and `images ui direction/`. Those folders contain a `.gdignore` file so Godot doesn't import them. New game assets (models, textures, audio) go under `assets/` and are stored with Git LFS.

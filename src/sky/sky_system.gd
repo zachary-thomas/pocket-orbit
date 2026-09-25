@@ -25,6 +25,10 @@ var time_scale := 1.0
 ## Local time at home, in seconds since midnight.
 var home_seconds := 0.0
 var day_of_year := 172
+## Days since 1 Jan 1970 at home. On the real clock it's today's date; on the
+## simulated clock it moves on each time the clock runs past midnight, so a
+## fast clock gives new days (new demand, fresh trees) quickly.
+var day_index := 0
 ## Unit vector from the planet toward the sun.
 var sun_direction := Vector3.UP
 var home_longitude := 0.0
@@ -69,6 +73,7 @@ func _ready() -> void:
 
 	day_of_year = _current_day_of_year()
 	home_seconds = _real_seconds()
+	day_index = _real_day_index()
 
 
 func setup(p_planet: Planet, p_observer: Node3D) -> void:
@@ -83,8 +88,11 @@ func setup(p_planet: Planet, p_observer: Node3D) -> void:
 func _process(delta: float) -> void:
 	if use_real_clock:
 		home_seconds = _real_seconds()
+		day_index = _real_day_index()
 	elif not paused:
-		home_seconds = fposmod(home_seconds + delta * time_scale, SECONDS_PER_DAY)
+		var seconds := home_seconds + delta * time_scale
+		day_index += floori(seconds / SECONDS_PER_DAY)
+		home_seconds = fposmod(seconds, SECONDS_PER_DAY)
 	_update_sun()
 
 
@@ -158,6 +166,11 @@ func _real_seconds() -> float:
 	var t := Time.get_time_dict_from_system()
 	var fraction := fmod(Time.get_unix_time_from_system(), 1.0)
 	return t.hour * 3600.0 + t.minute * 60.0 + t.second + fraction
+
+
+func _real_day_index() -> int:
+	var bias_minutes: int = Time.get_time_zone_from_system().get("bias", 0)
+	return floori((Time.get_unix_time_from_system() + bias_minutes * 60.0) / SECONDS_PER_DAY)
 
 
 func _current_day_of_year() -> int:

@@ -1,7 +1,7 @@
 class_name PlanetMesher
 extends RefCounted
-## Turns PlanetData into meshes: terraced terrain plus props (trees, rocks,
-## shrines and the village).
+## Turns PlanetData into meshes: terraced terrain plus the props PropPlacer
+## decided on (trees, rocks, shrines and the village).
 ##
 ## The planet is split into 80 chunks, so the renderer can skip chunks that
 ## are off screen or over the horizon, and so each stays under the Mobile
@@ -28,8 +28,6 @@ const CLIFF_FOOT_SHADE := 0.72
 const ROCK_JITTER := 0.22
 ## Share of the way from a tile's centre to its edge where colour blending starts.
 const BLEND_START := 0.3
-## Rings of tiles around home kept clear of wild trees for the village.
-const VILLAGE_CLEAR_RINGS := 2
 
 static var _rock_noise: FastNoiseLite
 
@@ -52,12 +50,7 @@ static func build(data: PlanetData) -> Dictionary:
 	_rock_noise = FastNoiseLite.new()
 	_rock_noise.seed = data.world_seed + 404
 	_rock_noise.frequency = 0.6
-	var forest_noise := FastNoiseLite.new()
-	forest_noise.seed = data.world_seed + 303
-	forest_noise.frequency = 3.0
 	var top_colors := _top_colors(data)
-	var village := data.tiles_within(data.home_tile, VILLAGE_CLEAR_RINGS)
-
 	for t in sphere.tile_count():
 		var chunk := nearest_direction(chunk_dirs, sphere.centers[t])
 		chunk_of[t] = chunk
@@ -65,19 +58,14 @@ static func build(data: PlanetData) -> Dictionary:
 		for corner in sphere.tile_corners(t):
 			chunk_radii[chunk] = maxf(chunk_radii[chunk], chunk_dirs[chunk].angle_to(corner))
 		_add_tile(terrain[chunk], data, t, top_colors)
-		if village.has(t) or data.is_water(t):
-			continue
-		if sphere.is_pentagon(t):
-			_add_shrine(near[chunk], far[chunk], data, t)
-		else:
-			var forest := forest_noise.get_noise_3dv(sphere.centers[t]) * 0.5 + 0.5
-			_add_nature(near[chunk], far[chunk], data, t, forest)
 
-	var lamps: Array[Vector3] = []
-	_add_village(data, near, far, chunk_of, lamps)
+	for prop: Dictionary in data.props:
+		var chunk := chunk_of[prop["tile"]]
+		add_prop(near[chunk], far[chunk], prop["model"], prop["xf"])
+
 	return {
 		"terrain": terrain, "near": near, "far": far,
-		"chunk_dirs": chunk_dirs, "chunk_radii": chunk_radii, "lamps": lamps,
+		"chunk_dirs": chunk_dirs, "chunk_radii": chunk_radii, "lamps": data.village.get("lamps", []),
 	}
 
 
@@ -253,44 +241,6 @@ static func _top_swatch(data: PlanetData, t: int) -> String:
 	return "grass"
 
 
-# --- Placement helpers ---------------------------------------------------------
-
-## Distance from a tile's centre to the middle of its first edge, in metres.
-static func tile_inradius(data: PlanetData, t: int) -> float:
-	var s := data.sphere.corner_start[t]
-	var mid := (data.sphere.corners[s] + data.sphere.corners[s + 1]).normalized()
-	return data.sphere.centers[t].angle_to(mid) * data.top_radius(t)
-
-
-## Upright transform at a random spot inside the tile, within `spread` of the
-## inradius from the centre.
-static func scatter_transform(data: PlanetData, t: int, rng: RandomNumberGenerator, spread: float) -> Transform3D:
-	var center := data.sphere.centers[t]
-	var r := data.top_radius(t)
-	var frame := SphereMath.basis_from_up(center)
-	var angle := rng.randf() * TAU
-	var dist := sqrt(rng.randf()) * spread * tile_inradius(data, t)
-	var offset := (frame.x * cos(angle) + frame.z * sin(angle)) * dist
-	var up := (center * r + offset).normalized()
-	return Transform3D(SphereMath.basis_from_up(up, rng.randf() * TAU), up * r)
-
-
-## Upright transform on tile `t`, `offset` metres from its centre toward
-## `toward`, with the model's front (+Z) facing `toward`.
-static func transform_toward(data: PlanetData, t: int, toward: Vector3, offset: float) -> Transform3D:
-	var center := data.sphere.centers[t]
-	var r := data.top_radius(t)
-	var dir := SphereMath.tangent(toward - center, center)
-	var up := (center * r + dir * offset).normalized()
-	return Transform3D(SphereMath.basis_facing(up, toward - up), up * r)
-
-
-static func tile_rng(data: PlanetData, t: int, salt: int = 0) -> RandomNumberGenerator:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = hash([data.world_seed, t, salt])
-	return rng
-
-
 ## Close-up props for one chunk: model placements (drawn instanced) and a
 ## mesh for primitive shapes that have no Blender model yet.
 class Props:
@@ -309,126 +259,35 @@ class Props:
 		return total
 
 
-## A model from PropLibrary: placed for instancing close up, and merged into
-## `far` as its simple version.
-static func add_model(near: Props, far: MeshData, model: String, xf: Transform3D) -> void:
+## A prop: a PropLibrary model is placed for instancing close up and merged
+## into `far` as its simple version; a built-in shape goes into both.
+static func add_prop(near: Props, far: MeshData, model: String, xf: Transform3D) -> void:
+	if model in PropPlacer.SHAPES:
+		add_shape(near.shapes, model, xf)
+		add_shape(far, model, xf)
+		return
 	near.place(model, xf)
 	far.add_arrays(xf, PropLibrary.arrays(model, 1))
 
 
-# --- Nature --------------------------------------------------------------------
+# --- Built-in shapes ----------------------------------------------------------
+# Props that don't have a Blender model yet (see the polish backlog).
 
-## Trees grow in clumps: `forest` (0..1, from noise) scales how many props a
-## tile gets, so there are groves and open meadows rather than an even spread.
-static func _add_nature(near: Props, far: MeshData, data: PlanetData, t: int, forest: float) -> void:
-	var rng := tile_rng(data, t)
-	var biome := data.biome[t]
-	var density: float = [0.0, 0.25, 0.55, 0.4, 0.3, 0.7, 0.35][biome]
-	density *= lerpf(0.2, 1.8, smoothstep(0.35, 0.72, forest))
-	for attempt in 3:
-		if rng.randf() > density:
-			continue
-		var xf := scatter_transform(data, t, rng, 0.7)
-		var s := rng.randf_range(0.8, 1.2)
-		var sized := xf.scaled_local(Vector3.ONE * s)
-		var roll := rng.randf()
-		match biome:
-			Biome.POLAR:
-				_both(near, far, func(md: MeshData) -> void: add_ice_spire(md, xf, s))
-			Biome.TUNDRA:
-				add_model(near, far, "tree_pine" if roll < 0.8 else "rock", sized)
-			Biome.GRASSLAND:
-				if roll < 0.55:
-					add_model(near, far, "tree_round", sized)
-				elif roll < 0.85:
-					add_model(near, far, "bush", sized)
-				else:
-					add_model(near, far, "rock", sized.scaled_local(Vector3.ONE * 0.8))
-			Biome.DESERT:
-				if roll < 0.7:
-					_both(near, far, func(md: MeshData) -> void: add_cactus(md, xf, s))
-				else:
-					add_model(near, far, "rock", sized)
-			Biome.JUNGLE:
-				if roll < 0.7:
-					_both(near, far, func(md: MeshData) -> void: add_jungle_tree(md, xf, s))
-				else:
-					add_model(near, far, "bush", sized.scaled_local(Vector3.ONE * 1.3))
-			Biome.MOUNTAIN:
-				add_model(near, far, "rock", sized.scaled_local(Vector3.ONE * 1.3))
-
-
-## Primitive shapes that don't have a Blender model yet go in both meshes.
-static func _both(near: Props, far: MeshData, add: Callable) -> void:
-	add.call(near.shapes)
-	add.call(far)
-
-
-static func add_jungle_tree(md: MeshData, xf: Transform3D, s: float) -> void:
-	md.add_prism(xf, 0.24 * s, 0.16 * s, 3.2 * s, 5, Palette.uv("trunk"))
-	md.add_blob(xf.translated_local(Vector3(0, 3.4 * s, 0)), Vector3(1.9, 0.7, 1.9) * s, Palette.uv("leaf_dark"), 0)
-	md.add_blob(xf.translated_local(Vector3(0.3 * s, 3.9 * s, 0.2 * s)), Vector3(1.2, 0.6, 1.2) * s, Palette.uv("palm"), 0)
-
-
-static func add_cactus(md: MeshData, xf: Transform3D, s: float) -> void:
-	var uv := Palette.uv("cactus")
-	md.add_prism(xf, 0.32 * s, 0.28 * s, 1.9 * s, 6, uv)
-	md.add_box(xf.translated_local(Vector3(0.42 * s, 0.9 * s, 0)), Vector3(0.5, 0.22, 0.22) * s, uv)
-	md.add_prism(xf.translated_local(Vector3(0.62 * s, 0.9 * s, 0)), 0.14 * s, 0.12 * s, 0.6 * s, 5, uv)
-
-
-static func add_ice_spire(md: MeshData, xf: Transform3D, s: float) -> void:
-	md.add_prism(xf, 0.6 * s, 0.0, 2.6 * s, 5, Palette.uv("ice"))
-	md.add_prism(xf.translated_local(Vector3(0.6 * s, 0, 0.2 * s)), 0.35 * s, 0.0, 1.4 * s, 5, Palette.uv("ice"))
-
-
-# --- Shrines and village -----------------------------------------------------
-
-## The 12 pentagon tiles are ancient shrines (and later, fast-travel points).
-static func _add_shrine(near: Props, far: MeshData, data: PlanetData, t: int) -> void:
-	var center := data.sphere.centers[t]
-	var xf := Transform3D(SphereMath.basis_from_up(center), center * data.top_radius(t))
-	for md: MeshData in [near.shapes, far]:
-		md.add_prism(xf, 1.4, 1.2, 0.35, 5, Palette.uv("shrine_stone"))
-		md.add_prism(xf.translated_local(Vector3(0, 0.35, 0)), 0.45, 0.32, 2.3, 5, Palette.uv("shrine_stone"))
-		md.add_blob(xf.translated_local(Vector3(0, 3.0, 0)), Vector3(0.45, 0.6, 0.45), Palette.uv("shrine_glow"), 0)
-
-
-## The starting village: the market stall on the home tile, a cottage on up to
-## three neighbouring tiles facing it, street lamps, and a few bushes and rocks.
-static func _add_village(data: PlanetData, near: Array[Props], far: Array[MeshData],
-		chunk_of: PackedInt32Array, lamps: Array[Vector3]) -> void:
-	var home := data.home_tile
-	var home_dir := data.sphere.centers[home]
-	var neighbors := data.sphere.neighbors(home)
-	var land: Array[int] = []
-	for n in neighbors:
-		if not data.is_water(n) and data.level[n] == data.level[home]:
-			land.append(n)
-	var c := chunk_of[home]
-
-	# The stall faces the first neighbour; lamps stand either side of it.
-	var facing := data.sphere.centers[land[0]] if not land.is_empty() else data.sphere.centers[neighbors[0]]
-	var stall := transform_toward(data, home, facing, 0.5)
-	add_model(near[c], far[c], "market_stall", stall)
-	for side in [-1.0, 1.0]:
-		var lamp := stall.translated_local(Vector3(2.3 * side, 0, 1.6))
-		add_model(near[c], far[c], "lamp_post", lamp)
-		lamps.append(lamp * Vector3(0, 2.3, 0))
-
-	for i in mini(land.size(), 3):
-		var tile := land[(i * 2 + 1) % land.size()]
-		var tc := chunk_of[tile]
-		var cottage := transform_toward(data, tile, home_dir, 0.0)
-		add_model(near[tc], far[tc], "cottage", cottage)
-		var lamp := cottage.translated_local(Vector3(1.9, 0, 2.6))
-		add_model(near[tc], far[tc], "lamp_post", lamp)
-		lamps.append(lamp * Vector3(0, 2.3, 0))
-		# Garden: a bush or two and a rock around the cottage.
-		var rng := tile_rng(data, tile, 7)
-		for k in 3:
-			var angle := rng.randf_range(0.5, TAU - 0.5)
-			var at := cottage.rotated_local(Vector3.UP, angle).translated_local(Vector3(0, 0, 2.9))
-			var model := "rock" if k == 2 else "bush"
-			var s := rng.randf_range(0.6, 0.9)
-			add_model(near[tc], far[tc], model, at.scaled_local(Vector3.ONE * s))
+static func add_shape(md: MeshData, model: String, xf: Transform3D) -> void:
+	match model:
+		"cactus":
+			var uv := Palette.uv("cactus")
+			md.add_prism(xf, 0.32, 0.28, 1.9, 6, uv)
+			md.add_box(xf.translated_local(Vector3(0.42, 0.9, 0)), Vector3(0.5, 0.22, 0.22), uv)
+			md.add_prism(xf.translated_local(Vector3(0.62, 0.9, 0)), 0.14, 0.12, 0.6, 5, uv)
+		"jungle_tree":
+			md.add_prism(xf, 0.24, 0.16, 3.2, 5, Palette.uv("trunk"))
+			md.add_blob(xf.translated_local(Vector3(0, 3.4, 0)), Vector3(1.9, 0.7, 1.9), Palette.uv("leaf_dark"), 0)
+			md.add_blob(xf.translated_local(Vector3(0.3, 3.9, 0.2)), Vector3(1.2, 0.6, 1.2), Palette.uv("palm"), 0)
+		"ice_spire":
+			md.add_prism(xf, 0.6, 0.0, 2.6, 5, Palette.uv("ice"))
+			md.add_prism(xf.translated_local(Vector3(0.6, 0, 0.2)), 0.35, 0.0, 1.4, 5, Palette.uv("ice"))
+		"shrine":
+			md.add_prism(xf, 1.4, 1.2, 0.35, 5, Palette.uv("shrine_stone"))
+			md.add_prism(xf.translated_local(Vector3(0, 0.35, 0)), 0.45, 0.32, 2.3, 5, Palette.uv("shrine_stone"))
+			md.add_blob(xf.translated_local(Vector3(0, 3.0, 0)), Vector3(0.45, 0.6, 0.45), Palette.uv("shrine_glow"), 0)

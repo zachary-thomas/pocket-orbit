@@ -381,6 +381,59 @@ def cottage(b, lod):
                      0, jitter=0.15, seed=30 + i, flatten_below=0.0)
 
 
+def cargo_pod(b, lod):
+    """The player's first home: a cargo pod from the smuggling run, lying on
+    its side on stubby legs, with a door cut in the front, portholes, patched
+    panels and a little antenna."""
+    segments = 14 if lod == 0 else 8
+    length = 4.2
+    radius = 1.35
+    # Body: a capsule along X (lathed around Z, then turned on its side).
+    # Profile: a quarter circle up from one end, straight along, a quarter
+    # circle back down to the other end.
+    profile = [(0.0, -length / 2)]
+    for i in range(1, 5):
+        a = math.pi / 2 * i / 4
+        profile.append((radius * math.sin(a), -length / 2 + radius * (1 - math.cos(a))))
+    for i in range(3, -1, -1):
+        a = math.pi / 2 * i / 4
+        profile.append((radius * math.sin(a), length / 2 - radius * (1 - math.cos(a))))
+    lying = at(0, 0, radius + 0.35) @ rot(y=90)
+    b.lathe(lying, profile, segments, "wall_cream", cap_bottom=False, cap_top=False, smooth=True)
+    # Coloured bands around the hull.
+    for x in (-1.2, 1.2):
+        b.cone(at(x, 0, radius + 0.35) @ rot(y=90) @ at(0, 0, -0.14), radius + 0.04, radius + 0.04, 0.28, segments, "roof_blue")
+    # Legs.
+    for x in (-1.3, 1.3):
+        for y in (-0.7, 0.7):
+            b.cone(at(x, y, 0), 0.22, 0.14, 0.55, 6, "lamp_post")
+    # Door on the front (-Y) with a frame, step and lamp.
+    b.box(at(0, -radius + 0.02, 1.2), (1.0, 0.2, 1.55), "roof_blue", 0.05 if lod == 0 else 0.0)
+    b.box(at(0, -radius - 0.06, 1.18), (0.78, 0.12, 1.35), "wood", 0.03 if lod == 0 else 0.0)
+    b.box(at(0, -radius - 0.45, 0.12), (1.1, 0.6, 0.24), "stone_light", 0.04 if lod == 0 else 0.0)
+    b.box(at(0.7, -radius - 0.02, 1.95), (0.2, 0.2, 0.24), "lamp_glow", 0.02 if lod == 0 else 0.0)
+    # Portholes either side of the door.
+    for x in (-1.45, 1.45):
+        b.cone(at(x, -radius * 0.93, 1.55) @ rot(x=90), 0.36, 0.36, 0.12, 12 if lod == 0 else 6, "lamp_post")
+        b.cone(at(x, -radius * 0.93 - 0.05, 1.55) @ rot(x=90), 0.26, 0.26, 0.1, 12 if lod == 0 else 6, "window_glow")
+    # Antenna with a blinking tip.
+    b.cone(at(-1.0, 0.2, radius * 2 + 0.3), 0.05, 0.03, 0.9, 5, "lamp_post")
+    b.sphere(at(-1.0, 0.2, radius * 2 + 1.25), 0.1, "awning_red", 1)
+    if lod == 0:
+        # Patches and rivets.
+        b.box(at(1.0, -0.4, radius * 2 + 0.28) @ rot(x=-18), (0.6, 0.45, 0.06), "stone_light", 0.02)
+        b.box(at(-0.3, 0.9, radius * 1.6 + 0.35) @ rot(x=40), (0.5, 0.4, 0.06), "roof_blue", 0.02)
+        for i in range(8):
+            ang = 2 * math.pi * i / 8
+            for x in (-1.2, 1.2):
+                p = Vector((x, math.cos(ang) * (radius + 0.06), radius + 0.35 + math.sin(ang) * (radius + 0.06)))
+                b.sphere(Matrix.Translation(p), 0.05, "gold", 0)
+        # A flower pot by the door.
+        b.cone(at(-0.85, -radius - 0.35, 0), 0.16, 0.2, 0.3, 8, "terracotta")
+        b.sphere(at(-0.85, -radius - 0.35, 0.42), 0.22, "leaf", 1, jitter=0.1, seed=40)
+        b.flower(at(-0.85, -radius - 0.45, 0.58) @ rot(x=-40), 0.1, "flower")
+
+
 ASSETS = {
     "tree_round": tree_round,
     "tree_pine": tree_pine,
@@ -389,10 +442,11 @@ ASSETS = {
     "lamp_post": lamp_post,
     "market_stall": market_stall,
     "cottage": cottage,
+    "cargo_pod": cargo_pod,
 }
 
 # How far (metres) ambient occlusion rays look for blockers, per asset.
-AO_REACH = {"cottage": 0.7, "market_stall": 0.9}
+AO_REACH = {"cottage": 0.7, "market_stall": 0.9, "cargo_pod": 0.8}
 
 
 # --- Baking and export ----------------------------------------------------------

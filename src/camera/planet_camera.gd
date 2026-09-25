@@ -33,6 +33,8 @@ var _orbit_up := Vector3.FORWARD
 var _orbit_distance := 400.0
 var _camera_tile := 0
 var _drag_touch := -1
+## Ground direction the camera is easing round to face, or zero.
+var _turn_toward := Vector3.ZERO
 
 
 func _ready() -> void:
@@ -57,6 +59,12 @@ func set_orbit_mode(enabled: bool, instant: bool = false) -> void:
 	orbit_mode = enabled
 	if instant:
 		_orbit_blend = 1.0 if enabled else 0.0
+
+
+## Eases the view round to look along `direction` (a ground-plane vector),
+## e.g. toward where the player is fishing. Dragging the camera cancels it.
+func turn_toward(direction: Vector3) -> void:
+	_turn_toward = direction
 
 
 ## Orbit view from a given direction (used by the screenshot tour).
@@ -93,6 +101,12 @@ func _process(delta: float) -> void:
 	var turn := Input.get_axis("camera_left", "camera_right")
 	if turn != 0.0 and not orbit_mode:
 		surface_forward = surface_forward.rotated(up, -turn * key_turn_speed * delta)
+		_turn_toward = Vector3.ZERO
+	if _turn_toward != Vector3.ZERO:
+		var goal := SphereMath.tangent(_turn_toward, up)
+		surface_forward = SphereMath.tangent(surface_forward.slerp(goal, minf(delta * 2.5, 1.0)), up)
+		if surface_forward.angle_to(goal) < 0.02:
+			_turn_toward = Vector3.ZERO
 
 	_orbit_blend = move_toward(_orbit_blend, 1.0 if orbit_mode else 0.0, delta * orbit_blend_speed)
 	var t := smoothstep(0.0, 1.0, _orbit_blend)
@@ -132,6 +146,7 @@ func _drag(relative: Vector2) -> void:
 		_orbit_dir = _orbit_dir.rotated(right, -relative.y * drag_sensitivity).normalized()
 		_orbit_up = SphereMath.tangent(_orbit_up.rotated(right, -relative.y * drag_sensitivity), _orbit_dir)
 	else:
+		_turn_toward = Vector3.ZERO
 		surface_forward = surface_forward.rotated(target.get_up(), -relative.x * drag_sensitivity)
 		pitch_degrees = clampf(pitch_degrees + relative.y * drag_sensitivity * 40.0, 4.0, 60.0)
 

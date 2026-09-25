@@ -499,7 +499,7 @@ RULES
 | Phase 0 controls | WASD + mouse camera and a basic on-screen joystick; tap-to-walk arrives with the TileGraph in Phase 1 |
 | Repo layout | Godot project at the repo root; concept art folders carry `.gdignore` so Godot skips them |
 | Git LFS | New game assets (models, textures, audio) go in LFS; the existing concept art stays as normal files |
-| Workflow | One branch and pull request per phase |
+| Workflow | Commit straight to `main` as each phase progresses; review once the whole roadmap is done |
 
 ### Still open
 

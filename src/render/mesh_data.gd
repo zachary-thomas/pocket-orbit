@@ -15,6 +15,9 @@ var vertices := PackedVector3Array()
 var normals := PackedVector3Array()
 var uvs := PackedVector2Array()
 var colors := PackedColorArray()
+## Multiplies the colour of everything added from now on (e.g. an item's
+## colour on the plain white swatch).
+var tint := Color.WHITE
 
 static var _blob_cache := {}
 
@@ -196,7 +199,7 @@ func _push(p: Vector3, n: Vector3, uv: Vector2, color: Color = Color.WHITE) -> v
 	vertices.append(p)
 	normals.append(n)
 	uvs.append(uv)
-	colors.append(color)
+	colors.append(color * tint)
 
 
 ## Unit icosphere as a flat list of triangle corners.
