@@ -5,7 +5,7 @@ extends Node3D
 ##
 ## Command-line options (after `--`):
 ##   --tour=<folder>   save a set of screenshots and quit (tools/screenshot_tour.gd)
-##   --playtest=<folder>  play through the Phase 1 loop, report and quit (tools/playtest.gd)
+##   --playtest=<folder>  play through the Phase 1 and 2 loops, report and quit (tools/playtest.gd)
 ##   --new-game        ignore the save and start fresh
 ##   --no-save         never write the save file
 

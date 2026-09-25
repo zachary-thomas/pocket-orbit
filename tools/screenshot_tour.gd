@@ -34,6 +34,7 @@ func _run() -> void:
 	await _surface_shot("04_surface_dusk_village", 19.6, false)
 	await _surface_shot("05_surface_night_village", 23.0, false)
 	await _cliff_shot("10_surface_cliffs_and_trees", 15.0)
+	await _sanctuary_shots()
 
 	# From orbit.
 	_sky.set_home_hours(12.0)
@@ -63,6 +64,108 @@ func _surface_shot(file: String, hours: float, face_sun: bool) -> void:
 		_camera.surface_forward = SphereMath.tangent(_sky.sun_direction, _player.get_up())
 	await _frames(4)
 	await _save(file)
+
+
+## The village with everything built and villagers about, a tide pool at low
+## tide, and the same view in autumn and winter.
+func _sanctuary_shots() -> void:
+	var game: Game = _main.game
+	var state := game.state
+	state.stardust = 50000
+	state.debt = 0
+	state.reputation = 60
+	for item: String in ["wood", "stone", "clay", "copper_ore"]:
+		game.run({"type": "collect", "item": item, "count": 40})
+	game.run({"type": "upgrade_shop"})
+	var kinds := ["landing_pad", "archive", "burrow_house"]
+	var plots: Array = _planet.data.village.get("plots", [])
+	for i in mini(kinds.size(), plots.size()):
+		game.run({"type": "build", "kind": kinds[i], "plot": plots[i]["id"]})
+	for shelf in 12:
+		game.run({"type": "collect", "item": ["meadow_trout", "apple", "amethyst", "glowbug"][shelf % 4]})
+		for slot in state.inventory.size():
+			if state.inventory.item_at(slot) in ["meadow_trout", "apple", "amethyst", "glowbug"]:
+				game.run({"type": "stock_shelf", "slot": slot, "shelf": shelf})
+				break
+	for species: Dictionary in VillageData.all_species():
+		VillageRules.request_move_in(state, species, state.day)
+		game.run({"type": "accept_resident", "id": VillageRules.pending_request(state)["id"]})
+	state.parcels.append({"item": "wood", "count": 5})
+	game.run({"type": "set_flag", "flag": "tour"})
+	_main.village.rebuild()
+	_sky.set_home_hours(11.0)
+	_sky.paused = true
+	_player.spawn(_planet, _planet.data.village["street_tile"])
+	_camera.reset_behind()
+	_camera.set_orbit_mode(false, true)
+	_camera.surface_forward = SphereMath.tangent(_planet.tile_center(_planet.data.home_tile) - _planet.tile_center(_planet.data.village["street_tile"]), _player.get_up())
+	_camera.distance = 20.0
+	_camera.pitch_degrees = 40.0
+	await _frames(240)
+	await _save("11_village_built")
+	_camera.distance = 8.5
+	_camera.pitch_degrees = 16.0
+	await _frames(4)
+	await _save("12_general_shop")
+	# The villagers and the inspector lined up in front of the player.
+	state.audit["next"] = state.day
+	_main.village._spawn_auditor()
+	var folk: Array = _main.village.villager_nodes()
+	folk.append(_main.village.auditor)
+	var up := _player.get_up()
+	var side := _player.get_up().cross(_camera.surface_forward).normalized()
+	for i in folk.size():
+		var npc: Npc = folk[i]
+		npc.visible = true
+		npc.set_route(PackedVector3Array())
+		npc.set_process(false)
+		var spot := _player.global_position + _camera.surface_forward * 3.2 + side * (i - (folk.size() - 1) * 0.5) * 1.2
+		var dir := _planet.up_at(spot)
+		var tile := _planet.find_tile_dir(dir, _player.tile)
+		npc.spawn(_planet, tile)
+		npc.global_position = _planet.global_position + dir * _planet.ground_radius(tile)
+		npc.face(_player.global_position - _camera.surface_forward * 6.0)
+	_camera.distance = 6.5
+	_camera.pitch_degrees = 12.0
+	await _frames(4)
+	await _save("16_villagers")
+	for npc: Npc in folk:
+		npc.set_process(true)
+	# A tide pool near home at low tide.
+	var pool := {}
+	for prop: Dictionary in _planet.data.props:
+		if prop["model"] == "tide_pool":
+			pool = prop
+			break
+	if not pool.is_empty():
+		for hour in 48:
+			_sky.set_home_hours(7.0 + hour * 0.25)
+			await _frames(1)
+			if _sky.water_depth(pool["tile"]) < -0.02:
+				break
+		var shore := -1
+		for n in _planet.data.sphere.neighbors(pool["tile"]):
+			if not _planet.data.is_water(n):
+				shore = n
+		if shore != -1:
+			_player.spawn(_planet, shore)
+			_camera.surface_forward = SphereMath.tangent(_planet.tile_center(pool["tile"]) - _planet.tile_center(shore), _player.get_up())
+			_camera.distance = 11.0
+			_camera.pitch_degrees = 35.0
+			await _frames(6)
+			await _save("13_tide_pool_low_tide")
+	# Seasons: the village in mid-October and mid-January.
+	for shot: Array in [["14_autumn", 2026, 10, 20], ["15_winter", 2027, 1, 20]]:
+		_sky.day_index = int(Time.get_unix_time_from_datetime_dict({"year": shot[1], "month": shot[2], "day": shot[3]}) / 86400)
+		_sky.set_home_hours(12.0)
+		_player.spawn(_planet, _planet.data.village["street_tile"])
+		_camera.reset_behind()
+		_camera.distance = 18.0
+		_camera.pitch_degrees = 35.0
+		await _frames(30)
+		await _save(shot[0])
+	_camera.distance = 8.5
+	_camera.pitch_degrees = 16.0
 
 
 ## Stands near home at the foot of a terrace with trees on it, looking up at it.

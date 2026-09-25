@@ -36,14 +36,14 @@ func setup(p_game: Game, p_camera: Camera3D) -> void:
 static func kind_at(world_seed: int, day: int, hours: float, season: String, biome: int, latitude: float) -> String:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([world_seed, day, int(hours / SPELL_HOURS), "weather"])
-	var cold := biome in [Biome.SNOW, Biome.TUNDRA] or (season == "winter" and absf(latitude) > 30.0)
+	var cold := biome in [Biome.POLAR, Biome.TUNDRA] or (season == "winter" and absf(latitude) > 30.0)
 	var chance: float = SHOWER_CHANCE.get(season, 0.2)
 	if biome == Biome.DESERT:
 		chance *= 0.2
 	if rng.randf() < chance:
 		return "snow" if cold else "rain"
 	var night := hours >= 20.5 or hours < 4.5
-	var leafy := biome in [Biome.GRASSLAND, Biome.FOREST, Biome.JUNGLE]
+	var leafy := biome in [Biome.GRASSLAND, Biome.JUNGLE]
 	if night and leafy and season in ["spring", "summer"] and not cold:
 		return "fireflies"
 	if not night and leafy and season == "autumn":

@@ -7,7 +7,7 @@ extends Node3D
 const PER_DAY := 6
 ## Rings out from home they turn up in.
 const MIN_RING := 3
-const MAX_RING := 11
+const MAX_RING := 7
 
 var game: Game
 var _material: Material
@@ -73,8 +73,8 @@ func refresh() -> void:
 	if not md.is_empty():
 		var mesh := MeshInstance3D.new()
 		mesh.mesh = md.to_mesh(_material)
-		mesh.global_position = planet.global_position
 		add_child(mesh)
+		mesh.global_position = planet.global_position
 
 
 static func _mound(md: MeshData, xf: Transform3D) -> void:

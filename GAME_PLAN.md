@@ -369,8 +369,8 @@ Phase 0 set the art style: Blender-scripted models matched to the concept art (s
 | When | Polish |
 | --- | --- |
 | With Phase 1 (done) | Player character from the turnaround sheet (goggles, patched jacket, scarf, backpack with bedroll), with swinging arms and legs. Close-up props dissolve where they block the camera's view of the player. Real models for cactus, palm, ice spire and shrines. Ground detail: grass tufts, flowers, pebbles, stepping-stone paths between village buildings. |
-| With Phase 2 (carried over) | Fences. Rounder terrace edges so the hex grid stops showing from orbit. |
-| With Phase 2 | Villager species and new buildings (general shop, Archive, landing pad) in the same style. Waterfalls where rivers drop off terraces, shore foam, tide pools. Rain, snow, fireflies, falling leaves. |
+| With Phase 2 (done) | Villager species (Mossback, Glim, Burrl) and the inspector. New buildings in the same style: general shop, Archive, landing pad, burrow house, plot markers. Fences, shore foam, tide pools, a moon. Rain, snow, fireflies, falling leaves; autumn colours and winter snow on the ground. |
+| With Phase 3 (carried over) | Rounder terrace edges so the hex grid stops showing from orbit. Waterfalls (the planet has no rivers yet; they come with river generation). Wading out onto tide flats at low tide (pools are searched from the shore for now). |
 | Before release | A side-by-side pass of every model against its concept (colour, bevels, proportions). Soft outline on characters, bloom tuning. Profiling on a mid-range phone, then tuning detail distances and triangle budgets. Final UI built from the UI mockups. |
 
 ## Tech stack & architecture

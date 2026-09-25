@@ -41,7 +41,7 @@ func refresh() -> void:
 	var species := VillageData.species(v["species"])
 	set_title("%s the %s" % [v["name"], species.get("name", "")])
 	var friendship := int(v["friendship"])
-	_hearts.text = "♥".repeat(mini(friendship / 2 + 1, 10)) + "  friends for %d chats" % friendship
+	_hearts.text = "♥".repeat(mini(friendship / 2 + 1, 10)) + "  friends for %d chat%s" % [friendship, "" if friendship == 1 else "s"]
 	var likes := PackedStringArray()
 	for like: String in species.get("likes", []):
 		likes.append(ItemDatabase.category_name(like).to_lower() if like in ItemDatabase.categories() else "%s things" % like)

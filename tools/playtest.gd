@@ -2,7 +2,10 @@ extends Node
 ## Scripted playthrough of the Phase 1 loop, driving the real game through
 ## its own controls (tap-to-walk targets and the action button): meet Vessa,
 ## gather, fish, catch a bug, stock the stall, watch customers buy, pay the
-## debt. Saves screenshots along the way, prints a report and quits.
+## debt. Then the Phase 2 sanctuary: build on a plot, order by drone mail,
+## welcome a refugee and chat, upgrade to the general shop, dig for fossils,
+## search a tide pool at low tide and get through an inspection. Saves
+## screenshots along the way, prints a report and quits.
 ##
 ##   godot --path . -- --playtest=<output folder>
 
@@ -169,6 +172,8 @@ func _run() -> void:
 	await _frames(6)
 	await _save("p09_night_stall")
 
+	await _sanctuary()
+
 	# Saving round trip.
 	var path := "user://playtest_save.json"
 	_check(SaveSystem.save(_game.state, path), "saved")
@@ -179,6 +184,184 @@ func _run() -> void:
 	print("\nPlaytest: %s" % ("all good." if _failures == 0 else "%d problem(s)." % _failures))
 	print("Stats: ", _game.state.stats, "  Stardust ", _game.state.stardust, "  debt ", _game.state.debt)
 	get_tree().quit(_failures)
+
+
+# --- Phase 2: the sanctuary ------------------------------------------------------
+
+func _sanctuary() -> void:
+	var state := _game.state
+	var village: Village = _main.village
+	_main.sky.set_home_hours(10.0)
+	# Skip the grind: enough Stardust and materials for everything.
+	state.stardust += 20000
+	state.debt = maxi(0, state.debt - 1000)
+	state.reputation = 25
+	for item: String in ["wood", "stone", "clay", "copper_ore"]:
+		_game.run({"type": "collect", "item": item, "count": 40 if item != "copper_ore" else 4})
+
+	# Build a landing pad on the nearest plot, through the plot's Build button.
+	var plots := village.plots()
+	_check(plots.size() >= 3, "the village has %d building plots" % plots.size())
+	if plots.is_empty():
+		return
+	var plot: Dictionary = plots[0]
+	_player.spawn(_planet, _planet.data.village["street_tile"])
+	var build := _target_where(func(t: Dictionary) -> bool: return t["kind"] == "plot" and t["id"] == plot["id"], plot["tile"])
+	_walk(build)
+	await _until(func() -> bool: return _hud.is_panel_open(), 25.0)
+	_check(_hud.is_panel_open() and _game.ui_subject == plot["id"], "walked to a plot and opened Build")
+	await _frames(4)
+	await _save("p10_build_panel")
+	_game.run({"type": "build", "kind": "landing_pad", "plot": plot["id"]})
+	_hud.close_panel()
+	await _frames(2)
+	_check(village.building_on(plot["id"]).get("kind", "") == "landing_pad" and village.pad_position() != Vector3.ZERO, "built a landing pad")
+
+	# Drone mail: order, sleep, the drone lands the parcel, open it.
+	state.seen["stone"] = true
+	_hud.open_panel("mail")
+	await _frames(3)
+	_check(_game.run({"type": "order", "item": "stone", "count": 5})["ok"], "ordered stone from the catalogue")
+	_hud.close_panel()
+	await _next_day()
+	await _frames(30)
+	_check(not state.parcels.is_empty() and village._drone != null, "the parcel arrived by drone")
+	await _save("p11_drone")
+	var stone := state.inventory.count_of("stone")
+	var parcels := _target_where(func(t: Dictionary) -> bool: return t["kind"] == "parcels", plot["tile"])
+	_walk(parcels)
+	await _until(func() -> bool: return state.parcels.is_empty(), 25.0)
+	_check(state.parcels.is_empty() and state.inventory.count_of("stone") >= stone + 5, "walked to the pad and unpacked the parcel")
+
+	# A refugee writes; welcome them; they walk home; have a chat.
+	if VillageRules.pending_request(state).is_empty():
+		await _next_day()
+	var letter := VillageRules.pending_request(state)
+	_check(not letter.is_empty(), "a refugee wrote asking to move in")
+	if not letter.is_empty():
+		_hud.open_panel("mail")
+		await _frames(4)
+		await _save("p12_move_in_letter")
+		_game.run({"type": "accept_resident", "id": letter["id"]})
+		_hud.close_panel()
+		await _frames(2)
+		var nodes := village.villager_nodes()
+		_check(nodes.size() == 1, "the new villager turned up")
+		if nodes.size() == 1:
+			var villager: Village.Villager = nodes[0]
+			await _until(func() -> bool: return villager.doing != "going_home", 60.0)
+			_check(villager.doing != "going_home", "and walked home")
+			var talk := _target_where(func(t: Dictionary) -> bool: return t["kind"] == "villager", villager.tile)
+			_walk(talk)
+			await _until(func() -> bool: return _hud.is_panel_open(), 30.0)
+			_check(_hud.is_panel_open() and state.villager(villager.id)["friendship"] == 1, "chatted with %s" % state.villager(villager.id)["name"])
+			await _frames(4)
+			await _save("p13_villager_chat")
+			_hud.close_panel()
+
+	# The general shop: 12 shelves and opening hours.
+	_check(_game.run({"type": "upgrade_shop"})["ok"] and state.shelves.size() == 12, "upgraded to the general shop")
+	_game.run({"type": "set_hours", "open": 7, "close": 21})
+	_check(Economy.opening_hours(state) == Vector2i(7, 21), "set opening hours")
+	_player.spawn(_planet, _planet.data.village["street_tile"])
+	_player.face(village.stall_transform().origin)
+	_main.camera.reset_behind()
+	await _frames(6)
+	await _save("p14_general_shop")
+
+	# Dig for fossils.
+	var spots: Dictionary = _main.dig_spots.spots()
+	_check(not spots.is_empty(), "%d dig spots today" % spots.size())
+	if not spots.is_empty():
+		var id: String = spots.keys()[0]
+		for key: String in spots:
+			if _actions.ground_distance(_player.global_position, spots[key]) < _actions.ground_distance(_player.global_position, spots[id]):
+				id = key
+		var at: Vector3 = spots[id]
+		var bag := _bag_total()
+		_walk({"kind": "dig", "label": "Dig", "pos": at, "reach": 1.9, "id": id, "size": 0.7, "height": 0.5})
+		print("        dig: %.1f m away, walking %s" % [_actions.ground_distance(_player.global_position, at), _player.has_route()])
+		await _until(func() -> bool: return not _main.dig_spots.spots().has(id), 90.0)
+		await _frames(30)
+		_check(_bag_total() > bag, "dug up something")
+
+	# A tide pool, at low tide.
+	var pool := {}
+	var around := _planet.data.tiles_within(_planet.data.home_tile, 14)
+	for prop: Dictionary in _planet.data.props:
+		if prop["model"] == "tide_pool" and around.has(prop["tile"]) and (pool.is_empty() or around[prop["tile"]] < around[pool["tile"]]):
+			pool = prop
+	if pool.is_empty():
+		print("  (no tide pool near home)")
+	else:
+		for step in 100:
+			_main.sky.set_home_hours(6.0 + step * 0.25)
+			if _main.sky.water_depth(pool["tile"]) <= Tides.WADE_DEPTH - 0.1:
+				break
+		var shore := -1
+		for n in _planet.data.sphere.neighbors(pool["tile"]):
+			if not _planet.data.is_water(n):
+				shore = n
+		_player.spawn(_planet, shore)
+		await _frames(2)
+		var search := _target_where(func(t: Dictionary) -> bool: return t["kind"] == "prop" and t["prop"]["id"] == pool["id"], pool["tile"])
+		print("        pool %s: depth %.2f at %.2f h, shore %d, player tile %d, %.1f m away" % [pool["id"], _main.sky.water_depth(pool["tile"]), _game.home_hours(), shore, _player.tile, _actions.ground_distance(_player.global_position, _planet.global_position + (pool["xf"] as Transform3D).origin)])
+		_check(search.get("label", "") == "Search", "a tide pool can be searched at low tide")
+		if not search.is_empty():
+			var bag := _bag_total()
+			_walk(search)
+			await _until(func() -> bool: return _bag_total() > bag, 20.0)
+			_check(_bag_total() > bag, "found something in the tide pool")
+			await _save("p15_tide_pool")
+
+	# The inspector.
+	var guard := 0
+	while not VillageRules.auditor_here(state) and guard < 15:
+		await _next_day()
+		guard += 1
+	_main.sky.set_home_hours(11.0)
+	await _until(func() -> bool: return village.auditor != null, 5.0)
+	_check(village.auditor != null, "Inspector Grell arrived")
+	if village.auditor:
+		await _until(func() -> bool: return not village.auditor.has_route(), 60.0)
+		_player.spawn(_planet, _planet.data.village["street_tile"])
+		var grell := _target_where(func(t: Dictionary) -> bool: return t["kind"] == "auditor", village.auditor.tile)
+		_walk(grell)
+		await _until(func() -> bool: return _hud.is_panel_open(), 30.0)
+		_check(_hud.is_panel_open(), "talked to the inspector")
+		await _frames(4)
+		await _save("p16_inspection")
+		var panel: AuditPanel = _hud._panels["audit"]
+		for i in 4:
+			var buttons := panel._answers.get_children().filter(func(b: Node) -> bool: return not b.is_queued_for_deletion())
+			if buttons.is_empty():
+				break
+			(buttons[0] as Button).pressed.emit()
+			await _frames(2)
+		_check(state.audit["done"] == state.day, "answered the questions: %s" % panel._text.text.get_slice("\n", 0))
+		_hud.close_panel()
+
+
+## Walks to a target and acts on it; says so if there's no target.
+func _walk(target: Dictionary) -> void:
+	if target.is_empty():
+		print("        (no target to walk to)")
+		return
+	_actions.walk_to_target(target)
+
+
+## Moves the sky clock on a day; the game notices and starts the new day.
+func _next_day() -> void:
+	_main.sky.day_index += 1
+	await _frames(2)
+
+
+## The first interaction target matching `test` around a tile.
+func _target_where(test: Callable, tile: int) -> Dictionary:
+	for target in _actions.candidates(tile):
+		if test.call(target):
+			return target
+	return {}
 
 
 func _check(ok: bool, what: String) -> void:

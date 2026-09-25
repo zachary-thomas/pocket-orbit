@@ -171,8 +171,8 @@ func rebuild() -> void:
 func _add_model(model: String, xf: Transform3D) -> void:
 	var holder := Node3D.new()
 	holder.name = model
-	holder.global_transform = xf
 	_built.add_child(holder)
+	holder.global_transform = xf
 	for lod in 2:
 		var mesh := MeshInstance3D.new()
 		mesh.mesh = PropLibrary.mesh(model, lod, _material)
@@ -208,8 +208,8 @@ func _add_parcels(pad: Transform3D) -> void:
 		_parcel_mesh(md, at)
 	var mesh := MeshInstance3D.new()
 	mesh.mesh = md.to_mesh(_npc_material)
-	mesh.global_transform = pad
 	_built.add_child(mesh)
+	mesh.global_transform = pad
 
 
 static func _parcel_mesh(md: MeshData, at: Transform3D) -> void:

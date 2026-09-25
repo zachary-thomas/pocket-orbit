@@ -75,18 +75,27 @@ func refresh() -> void:
 		return
 	_page.add_child(UiTheme.label(letter["subject"], 24, UiTheme.WOOD_DARK))
 	_page.add_child(UiTheme.label("From %s, %s" % [letter["from"], GameHud.date_label(letter["day"])], 16, UiTheme.TEXT_SOFT))
-	var text := UiTheme.label(letter["body"], 19)
+	_page.add_theme_constant_override("separation", 8)
+	# The letter scrolls; answers stay below it.
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(540, 250)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_page.add_child(scroll)
+	var paper := VBoxContainer.new()
+	paper.add_theme_constant_override("separation", 10)
+	scroll.add_child(paper)
+	var text := UiTheme.label(letter["body"], 18)
 	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.custom_minimum_size = Vector2(520, 0)
-	_page.add_child(text)
+	text.custom_minimum_size = Vector2(510, 0)
+	paper.add_child(text)
 	if letter["kind"] == "move_in":
 		var status: String = letter["data"].get("status", "")
 		if status == "pending":
 			var species := VillageData.species(letter["data"]["species"])
 			var about := UiTheme.label("%s: %s" % [species.get("plural", ""), species.get("blurb", "")], 16, UiTheme.TEXT_SOFT)
 			about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			about.custom_minimum_size = Vector2(520, 0)
-			_page.add_child(about)
+			about.custom_minimum_size = Vector2(510, 0)
+			paper.add_child(about)
 			var free := VillageRules.free_homes(state).size()
 			_page.add_child(UiTheme.label("Free homes: %d" % free, 16, UiTheme.GOOD if free > 0 else UiTheme.BAD))
 			var answer := HBoxContainer.new()

@@ -39,7 +39,7 @@ func refresh() -> void:
 		var costs: Dictionary = def["costs"]
 		var affordable := Commands.can_afford(state, costs)
 		text.add_child(UiTheme.label("Costs " + Commands.costs_text(costs), 16, UiTheme.TEXT if affordable else UiTheme.BAD))
-		var built := def["id"] != "burrow_house" and state.has_building(def["id"])
+		var built: bool = def["id"] != "burrow_house" and state.has_building(def["id"])
 		var b := UiTheme.button("Built" if built else "Build", func() -> void:
 			var result := game.run({"type": "build", "kind": def["id"], "plot": game.ui_subject})
 			if result["ok"]:

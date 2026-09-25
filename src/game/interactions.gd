@@ -165,10 +165,11 @@ func candidates(around_tile: int) -> Array[Dictionary]:
 	]
 	if vessa:
 		list.append({"kind": "vessa", "label": "Talk", "pos": vessa.global_position, "reach": 2.8, "size": 0.7, "height": 1.8})
-	if village:
-		for plot: Dictionary in village.plots():
-			var building := village.building_on(plot["id"])
-			var xf := village.plot_transform(plot)
+	var town := self.village
+	if town:
+		for plot: Dictionary in town.plots():
+			var building: Dictionary = town.building_on(plot["id"])
+			var xf: Transform3D = town.plot_transform(plot)
 			match building.get("kind", ""):
 				"":
 					list.append({"kind": "plot", "label": "Build", "pos": xf.origin, "reach": 3.2, "id": plot["id"], "size": 2.0, "height": 1.0})
@@ -177,11 +178,11 @@ func candidates(around_tile: int) -> Array[Dictionary]:
 				"landing_pad":
 					if not game.state.parcels.is_empty():
 						list.append({"kind": "parcels", "label": "Open", "pos": xf.origin, "reach": 2.8, "size": 1.0, "height": 1.2})
-		for villager: Village.Villager in village.villager_nodes():
+		for villager: Village.Villager in town.villager_nodes():
 			if villager.visible:
 				list.append({"kind": "villager", "label": "Talk", "pos": villager.global_position, "reach": 2.6, "node": villager, "id": villager.id, "size": 0.7, "height": 1.6})
-		if village.auditor:
-			list.append({"kind": "auditor", "label": "Talk", "pos": village.auditor.global_position, "reach": 2.8, "node": village.auditor, "size": 0.7, "height": 1.9})
+		if town.auditor:
+			list.append({"kind": "auditor", "label": "Talk", "pos": town.auditor.global_position, "reach": 2.8, "node": town.auditor, "size": 0.7, "height": 1.9})
 	if dig_spots:
 		var spots := dig_spots.spots()
 		for id: String in spots:
